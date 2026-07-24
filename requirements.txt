@@ -1,0 +1,14 @@
+# Shared by all three apps
+pywin32>=306          # window enumeration, icons, clipboard, mutex
+pystray>=0.19.5       # tray icons
+Pillow>=10.0          # tray icon rendering, clipboard image thumbnails
+customtkinter>=5.2    # settings windows, dock panel, clipboard popup
+keyboard>=0.13.5      # global hotkeys (low-level WH_KEYBOARD_LL hook)
+
+# Dock
+psutil>=5.9           # CPU / RAM / network counters
+nvidia-ml-py>=12.535  # NVIDIA GPU usage; absent or failing -> metric hidden
+
+# Reader
+sounddevice>=0.4.6    # in-process PCM playback (avoids needing ffmpeg)
+numpy>=1.24           # PCM buffer handling for sounddevice

@@ -1,0 +1,191 @@
+# Piper Read Aloud — Windows
+
+Select text anywhere in Windows, press `Ctrl+Shift+A`, and it is read aloud with a
+Piper neural voice. Press the hotkey again to stop.
+
+This is a port of a working Linux/GNOME tool (`D:\code\readerpy`). The text-cleaning
+and sentence-chunking pipeline is carried over verbatim — it was tuned against real
+Piper output — and everything OS-facing was rewritten for Windows.
+
+---
+
+## Running it
+
+```
+C:\Users\c\AppData\Local\Programs\Python\Python312\python.exe D:\code\winThings\reader\app.py
+```
+
+Python 3.12 is not on PATH on this machine, so use the full interpreter path. It runs
+as a tray app: the icon sits in the notification area, right-click for
+Read selection / Stop / Settings / Quit.
+
+For no console window, use `pythonw.exe` instead of `python.exe` (that is what the
+"Start with Windows" switch registers).
+
+The app starts fine with no Piper installed — the settings window just shows
+`piper.exe not found` in the status line instead of reading anything.
+
+Dependencies (already installed here): `pywin32`, `pystray`, `Pillow`,
+`customtkinter`, `keyboard`, `sounddevice`, `numpy`.
+
+---
+
+## Installing piper.exe and voices
+
+Nothing is bundled; both go in this folder.
+
+### 1. piper.exe → `reader\piper\`
+
+Download `piper_windows_amd64.zip` from the Piper releases page:
+
+  https://github.com/rhasspy/piper/releases
+
+Unzip it so the layout is:
+
+```
+reader\piper\piper.exe
+reader\piper\onnxruntime.dll        (and the other DLLs from the zip)
+reader\piper\espeak-ng-data\        (folder from the zip)
+```
+
+This app drives the **classic `piper.exe` CLI** — the one with `--output_raw`,
+`--length_scale`, `--sentence_silence` and `--espeak_data`. The newer `piper1-tts`
+Python package uses different flag spellings and will not work as a drop-in; if you
+want to use it, point the `piper_exe` config key at a wrapper script that translates
+the arguments.
+
+`--espeak_data` is only passed when `reader\piper\espeak-ng-data\` exists, so builds
+that find their own phoneme data still work.
+
+### 2. Voices → `reader\voices\`
+
+Each voice is a **pair** of files that must sit next to each other:
+
+```
+reader\voices\en_US-ryan-high.onnx
+reader\voices\en_US-ryan-high.onnx.json
+```
+
+Download from https://huggingface.co/rhasspy/piper-voices (browse by language, then
+quality: `low` / `medium` / `high`). Audition them first at
+https://rhasspy.github.io/piper-samples/ .
+
+The default voice is `en_US-ryan-high` when present; otherwise the first voice found,
+alphabetically. The sample rate comes from `audio.sample_rate` in the `.onnx.json`.
+
+Voice files are large. If you keep them elsewhere, set the `voices_dir` config key to
+that folder instead of copying them in.
+
+---
+
+## Hotkeys
+
+| Key | Action |
+| --- | --- |
+| `Ctrl+Shift+A` (configurable) | Read the current selection; press again to stop |
+| `Esc` / `Q` / right-click / the ✕ | Close the reading-mode overlay |
+| Click the overlay text | Toggle fullscreen ↔ small bottom-right panel |
+
+Set the hotkey in Settings → Shortcut: click the field and press the combination.
+
+The hotkey is registered **suppressed**, meaning the focused app never sees it. That
+is deliberate: some editors bind `Ctrl+Shift+A` themselves, and if that command
+changed the selection first, the `Ctrl+C` we synthesize would copy the wrong thing.
+
+---
+
+## Configuration
+
+`%APPDATA%\WinThings\reader\config.json`, written by the settings window. Edit it by
+hand if you prefer; unknown keys are preserved and out-of-range values are clamped.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `voice` | `""` | Voice id (filename without `.onnx`). Blank = `en_US-ryan-high`, else first found |
+| `speed` | `1.0` | Speed multiplier, 0.5–5.0. Piper's `--length_scale` is its inverse |
+| `volume` | `1.0` | 0.0–1.5, applied to the PCM samples before playback |
+| `sentence_silence` | `0.2` | Seconds of silence between sentences (Piper's `--sentence_silence`) |
+| `reading_mode` | `false` | Fullscreen overlay that highlights each word as it is read |
+| `hotkey` | `"ctrl+shift+a"` | Global shortcut |
+| `autostart` | `false` | Register under `HKCU\...\CurrentVersion\Run` |
+| `voices_dir` | `""` | Blank = `reader\voices` |
+| `piper_exe` | `""` | Blank = `reader\piper\piper.exe`, then whatever is on PATH |
+
+---
+
+## Command line
+
+The CLI from the Linux version is kept, for scripting. If the tray app is running the
+command is handed to it over a loopback socket; if it is not, `--text` synthesizes in
+place and waits.
+
+```
+app.py                      run the tray app
+app.py --settings           run it with the settings window open
+app.py --stop               stop any current playback
+app.py --read               read the current selection
+app.py --text "..."         read the given text
+app.py --voice ID --speed 1.2 --text "..."
+app.py --list-voices
+```
+
+A second bare `app.py` while one is already running opens the first one's settings
+window instead of starting a duplicate tray icon and keyboard hook.
+
+---
+
+## What was ported, and what changed
+
+**Carried over verbatim** (`speech.py`) — a regression test diffs these against
+`D:\code\readerpy\read-aloud.py` on ~3000 fuzz inputs plus hand-picked nasty cases,
+and every result is identical:
+
+- `clean_for_speech`, `clean_token` and the regex constants `ABBREV`, `CTRL_RE`,
+  `URL_RE`, `WWW_RE`, `EMAIL_RE`, `RULE_RE`, `DASHES_RE`, `TOKEN_RE`, `CODEY_RE`,
+  `KEEP_PUNCT`, `_has_letter_or_digit`
+- `split_sentences`, `break_long`, `prepare_text`, `MAX_CHUNK`
+- `discover_voices` / `pick_voice`
+
+**Replaced for Windows:**
+
+| Linux | Windows |
+| --- | --- |
+| X11 PRIMARY selection | synthetic `Ctrl+C` + clipboard snapshot/restore (`selection.py`) |
+| `gsettings` custom keybinding | `common.hotkey` / the `keyboard` low-level hook |
+| `pw-play` / `aplay` / `ffplay` pipe | `sounddevice` streaming, in-process (`engine.py`) |
+| process group + `killpg` + PID file | worker thread + `threading.Event` (`engine.py`) |
+| PID file for `--stop` from a second process | loopback control socket (`ipc.py`) |
+| GTK settings window | customtkinter via `common.ui` (`settings.py`) |
+| GTK fullscreen overlay | Tk `Toplevel` overlay (`overlay.py`) |
+
+**Shipped, not deferred:** the reading-mode overlay. Tk needs none of the Wayland /
+Mutter workarounds the GTK version was full of, so it came out smaller than the
+original. Turn it on with the Reading mode switch.
+
+---
+
+## Known Windows limitations
+
+These are real limits, not oversights:
+
+- **Only text is restored to the clipboard.** Capturing a selection means pressing
+  `Ctrl+C` in the focused app, which destroys whatever was on the clipboard. We put
+  back the previous *text*; if the clipboard held an image or files, it is already
+  gone by the time we see it and the captured text is left there instead.
+- **Nothing gets read from an elevated window.** Windows blocks a normal-integrity
+  process from hooking keys pressed while an admin window has focus. Run the app
+  elevated too if you need that (and accept the UAC prompt at every start).
+- **Reading mode has to synthesize the whole selection first.** Piper emits no word
+  alignment, so word timings are estimated from the total audio duration — which
+  means the overlay waits for synthesis to finish before it starts speaking. Normal
+  (non-overlay) reading streams and starts as soon as the first audio arrives.
+- **Word highlighting is an estimate**, weighted by word length and trailing
+  punctuation. Usually within ~150 ms; it drifts on text with unusual pronunciation.
+- **Bluetooth audio adds latency.** Opening the output stream on a BT headset
+  measured ~0.8 s on this machine, so the first word lags. Wired/USB devices open in
+  a few tens of milliseconds.
+- **"Read selection" from the tray or settings** has to restore focus to the window
+  you were last using before it can copy. That is polled (`foreground.py`) and is
+  best-effort; the hotkey is always the reliable path because focus is already right.
+- **A hotkey can fail to register** if another app holds the same combination. The
+  status line says so explicitly rather than silently doing nothing.

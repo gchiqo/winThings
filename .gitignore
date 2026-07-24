@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Piper runtime + voice models are large binaries, downloaded per-machine
+reader/piper/
+reader/voices/
+*.onnx
+*.onnx.json
+
+# Local state lives in %APPDATA%\WinThings, but don't catch strays
+*.db
+*.log
