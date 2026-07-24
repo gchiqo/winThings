@@ -151,7 +151,7 @@ and every result is identical:
 | Linux | Windows |
 | --- | --- |
 | X11 PRIMARY selection | synthetic `Ctrl+C` + clipboard snapshot/restore (`selection.py`) |
-| `gsettings` custom keybinding | `common.hotkey` / the `keyboard` low-level hook |
+| `gsettings` custom keybinding | `RegisterHotKey` via `common.winhotkey` (no keyboard hook) |
 | `pw-play` / `aplay` / `ffplay` pipe | `sounddevice` streaming, in-process (`engine.py`) |
 | process group + `killpg` + PID file | worker thread + `threading.Event` (`engine.py`) |
 | PID file for `--stop` from a second process | loopback control socket (`ipc.py`) |
@@ -172,9 +172,14 @@ These are real limits, not oversights:
   `Ctrl+C` in the focused app, which destroys whatever was on the clipboard. We put
   back the previous *text*; if the clipboard held an image or files, it is already
   gone by the time we see it and the captured text is left there instead.
-- **Nothing gets read from an elevated window.** Windows blocks a normal-integrity
-  process from hooking keys pressed while an admin window has focus. Run the app
-  elevated too if you need that (and accept the UAC prompt at every start).
+- **Nothing gets read from an elevated window.** A hotkey registered by a
+  normal-integrity process does not fire while an admin window has focus, and the
+  synthetic `Ctrl+C` would not reach it either. Run the app elevated too if you
+  need that (and accept the UAC prompt at every start).
+- **The hotkey has one owner system-wide.** `RegisterHotKey` refuses a
+  combination another application already holds, and the status line reports it
+  rather than binding silently and never firing. `Win+Shift+A` is already taken
+  on this machine.
 - **Reading mode has to synthesize the whole selection first.** Piper emits no word
   alignment, so word timings are estimated from the total audio duration — which
   means the overlay waits for synthesis to finish before it starts speaking. Normal

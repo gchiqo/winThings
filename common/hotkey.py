@@ -1,19 +1,46 @@
-"""Global hotkey registration on top of the `keyboard` package.
+"""Global hotkeys and key synthesis, with no keyboard hook anywhere.
 
-`keyboard` installs a low-level WH_KEYBOARD_LL hook, which means:
-  * hotkeys fire regardless of which window has focus
-  * it does NOT see keys pressed while an elevated window is focused, unless
-    this process is also elevated (Windows blocks cross-integrity-level hooks)
-  * suppression (swallowing the keystroke) works, but a suppressed combo that
-    an app also wants will simply never reach that app
+This module keeps the interface the apps were written against, but the
+implementation underneath changed for a reason worth recording.
 
-Callbacks run on `keyboard`'s hook thread, so anything touching Tk must be
-marshalled back to the UI thread (see ui.call_on_ui_thread).
+It used to wrap the `keyboard` package's add_hotkey(..., suppress=True), which
+installs a WH_KEYBOARD_LL hook. To suppress a combination that package must
+decide, on the Ctrl key-down, whether a hotkey is coming — so it blocks the
+keystroke and re-injects it later if the combination turns out not to match.
+Press Tab or Caps Lock after a modifier and that replay is exactly what runs.
+With the clipboard and reader each running their own block-and-replay state
+machine over one physical keyboard, a lost key-up leaves Ctrl or Shift stuck
+down, which is what happened in practice.
+
+Now:
+  * hotkeys go through RegisterHotKey (see winhotkey.py) — the OS matches and
+    consumes the combination, so there is no hook and nothing to replay
+  * synthetic keystrokes go through SendInput (see keysend.py), which never
+    passes through a hook, always releases what it pressed, and force-releases
+    any modifier left down
+  * recording a hotkey in the settings window polls GetAsyncKeyState instead of
+    hooking the keyboard
+
+The `keyboard` package is no longer used by any of this.
 """
 
-import threading
+from . import keysend
+from .winhotkey import HotkeyManager, available, parse  # noqa: F401
 
-_lock = threading.Lock()
+__all__ = ["HotkeyManager", "normalize", "pretty", "is_valid", "available",
+           "send", "release_stuck", "modifiers_down", "capture"]
+
+ALIASES = {
+    "control": "ctrl", "win": "windows", "super": "windows", "meta": "windows",
+    "return": "enter", "escape": "esc",
+}
+DISPLAY = {"ctrl": "Ctrl", "alt": "Alt", "shift": "Shift", "windows": "Win",
+           "esc": "Esc", "enter": "Enter", "space": "Space", "tab": "Tab",
+           "capslock": "Caps Lock"}
+# Win first, matching how Windows itself writes its shortcuts (Win+Shift+S,
+# Win+Ctrl+D). Only affects display and the stored string; parse() does not care
+# about modifier order.
+MODIFIER_ORDER = {"windows": 0, "ctrl": 1, "alt": 2, "shift": 3}
 
 
 def normalize(spec):
@@ -21,147 +48,121 @@ def normalize(spec):
     if not spec:
         return ""
     parts = [p.strip().lower() for p in str(spec).split("+") if p.strip()]
-    aliases = {
-        "control": "ctrl", "win": "windows", "super": "windows",
-        "meta": "windows", "return": "enter", "escape": "esc",
-    }
-    return "+".join(aliases.get(p, p) for p in parts)
+    return "+".join(ALIASES.get(p, p) for p in parts)
 
 
 def pretty(spec):
     """'ctrl+shift+v' -> 'Ctrl + Shift + V'."""
     if not spec:
         return "(none)"
-    names = {"ctrl": "Ctrl", "alt": "Alt", "shift": "Shift", "windows": "Win",
-             "esc": "Esc", "enter": "Enter", "space": "Space"}
     return " + ".join(
-        names.get(p, p.upper() if len(p) == 1 else p.capitalize())
+        DISPLAY.get(p, p.upper() if len(p) == 1 else p.capitalize())
         for p in normalize(spec).split("+")
     )
 
 
 def is_valid(spec):
-    """Can `keyboard` parse this? Checked without registering anything."""
-    spec = normalize(spec)
-    if not spec:
-        return False
+    """Parseable as a modifier+key combination? Registers nothing."""
     try:
-        import keyboard
-
-        keyboard.parse_hotkey(spec)
+        parse(normalize(spec))
         return True
-    except Exception:
+    except ValueError:
         return False
-
-
-class HotkeyManager:
-    """Register/rebind named hotkeys, tracking whether each actually bound.
-
-    Binding can fail (bad spec, or another process holding an exclusive
-    registration), so apps can surface a "hotkey not bound" state instead of
-    silently doing nothing — the same indicator the GTK version had.
-    """
-
-    def __init__(self):
-        self._handles = {}   # name -> keyboard handle
-        self._specs = {}     # name -> normalized spec
-        self._failed = {}    # name -> error string
-
-    def bind(self, name, spec, callback, suppress=False):
-        """(Re)bind `name` to `spec`. Returns True if the hook took."""
-        import keyboard
-
-        spec = normalize(spec)
-        with _lock:
-            self.unbind(name)
-            if not spec:
-                self._failed[name] = "no hotkey set"
-                return False
-            try:
-                handle = keyboard.add_hotkey(
-                    spec, callback, suppress=suppress, trigger_on_release=False
-                )
-            except Exception as exc:
-                self._failed[name] = str(exc) or "could not register"
-                return False
-            self._handles[name] = handle
-            self._specs[name] = spec
-            self._failed.pop(name, None)
-            return True
-
-    def unbind(self, name):
-        import keyboard
-
-        handle = self._handles.pop(name, None)
-        self._specs.pop(name, None)
-        if handle is not None:
-            try:
-                keyboard.remove_hotkey(handle)
-            except (KeyError, ValueError):
-                pass
-
-    def bound(self, name):
-        return name in self._handles
-
-    def spec(self, name):
-        return self._specs.get(name, "")
-
-    def error(self, name):
-        return self._failed.get(name)
-
-    def unbind_all(self):
-        for name in list(self._handles):
-            self.unbind(name)
 
 
 def send(combo):
-    """Synthesize a keystroke (e.g. 'ctrl+c'). Best-effort."""
-    try:
-        import keyboard
-
-        keyboard.send(normalize(combo))
-        return True
-    except Exception:
-        return False
+    """Synthesise a keystroke, e.g. 'ctrl+v'. Releases everything it presses."""
+    return keysend.send(normalize(combo))
 
 
-def capture(on_done, cancel_key="esc"):
-    """Record the next chord the user presses; for the settings hotkey field.
+def release_stuck(skip_win=True):
+    """Force any held modifier up. Returns the VKs it had to release."""
+    return keysend.release_stuck(skip_win=skip_win)
 
-    Calls on_done(spec_or_None) on the hook thread once a non-modifier key is
-    released. Returns a function that aborts the capture.
+
+def modifiers_down():
+    return keysend.modifiers_down()
+
+
+# -- recording a hotkey ------------------------------------------------------
+# Polled rather than hooked: this runs while the user is pressing modifiers, so
+# it is the last place that should install a hook that might swallow a key-up.
+
+import threading  # noqa: E402
+import time  # noqa: E402
+
+_VK_NAMES = {
+    0x1B: "esc", 0x09: "tab", 0x20: "space", 0x0D: "enter", 0x08: "backspace",
+    0x2E: "delete", 0x2D: "insert", 0x24: "home", 0x23: "end",
+    0x21: "pageup", 0x22: "pagedown", 0x26: "up", 0x28: "down",
+    0x25: "left", 0x27: "right", 0x14: "capslock", 0x2C: "printscreen",
+    0x13: "pause",
+    **{0x6F + n: f"f{n}" for n in range(1, 25)},
+    **{0x30 + n: str(n) for n in range(10)},
+    **{0x41 + i: chr(0x61 + i) for i in range(26)},
+}
+
+_MOD_VKS = [("ctrl", (0xA2, 0xA3)), ("alt", (0xA4, 0xA5)),
+            ("shift", (0xA0, 0xA1)), ("windows", (0x5B, 0x5C))]
+
+
+def capture(on_done, cancel_key="esc", timeout=15.0, poll=0.03):
+    """Record the next combination the user presses.
+
+    Calls on_done(spec) once a non-modifier key goes down while at least one
+    modifier is held, on_done(None) if Esc is pressed alone or nothing arrives
+    before the timeout. Returns a function that aborts the capture.
     """
-    import keyboard
-
-    pressed, state = set(), {"stopped": False}
-    mods = {"ctrl", "left ctrl", "right ctrl", "alt", "left alt", "right alt",
-            "shift", "left shift", "right shift", "windows", "left windows",
-            "right windows"}
+    state = {"stopped": False}
 
     def finish(spec):
         if state["stopped"]:
             return
         state["stopped"] = True
-        try:
-            keyboard.unhook(hook)
-        except (KeyError, ValueError):
-            pass
         on_done(spec)
 
-    def hook(event):
-        name = (event.name or "").lower()
-        if event.event_type == "down":
-            if name == cancel_key and not pressed:
-                finish(None)
-                return
-            pressed.add(name)
-            if name not in mods:
-                order = {"ctrl": 0, "alt": 1, "shift": 2, "windows": 3}
-                keys = sorted(
-                    {k.replace("left ", "").replace("right ", "") for k in pressed},
-                    key=lambda k: order.get(k, 9),
-                )
-                finish(normalize("+".join(keys)))
+    def held_modifiers():
+        return [name for name, vks in _MOD_VKS
+                if any(keysend.user32.GetAsyncKeyState(vk) & 0x8000 for vk in vks)]
 
-    hook = keyboard.hook(hook)
+    def _any_key_down():
+        return any(keysend.user32.GetAsyncKeyState(vk) & 0x8000
+                   for vk in _VK_NAMES)
+
+    def _pressed(vk):
+        """Down now, or tapped since the last check.
+
+        GetAsyncKeyState's low bit reports a press that happened between calls,
+        which is what catches a key tapped faster than the poll interval. Reading
+        it also clears it, so the drain loop below leaves a clean slate.
+        """
+        return keysend.user32.GetAsyncKeyState(vk) & 0x8001
+
+    def watch():
+        deadline = time.monotonic() + timeout
+        # Drain first: the keystroke that opened the recorder must not be the one
+        # it records, and stale tapped-since bits have to be cleared.
+        while time.monotonic() < deadline and not state["stopped"]:
+            for vk in _VK_NAMES:
+                _pressed(vk)
+            if not held_modifiers() and not _any_key_down():
+                break
+            time.sleep(poll)
+
+        while time.monotonic() < deadline and not state["stopped"]:
+            mods = held_modifiers()
+            for vk, name in _VK_NAMES.items():
+                if not _pressed(vk):
+                    continue
+                if name == cancel_key and not mods:
+                    finish(None)
+                    return
+                if mods:
+                    ordered = sorted(mods, key=lambda m: MODIFIER_ORDER[m])
+                    finish(normalize("+".join(ordered + [name])))
+                    return
+            time.sleep(poll)
+        finish(None)
+
+    threading.Thread(target=watch, daemon=True, name="hotkey-capture").start()
     return lambda: finish(None)

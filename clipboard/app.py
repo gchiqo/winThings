@@ -202,17 +202,10 @@ class ClipboardApp:
             self.root.after(70, self.send_paste)
 
     def send_paste(self):
-        import keyboard
-
-        # The user may still be holding the hotkey's modifiers, which would turn
-        # our Ctrl+V into Ctrl+Shift+V in the target app. Windows is left alone
-        # on purpose: a lone Win keyup opens the Start menu.
-        for mod in ("shift", "ctrl", "alt"):
-            try:
-                if keyboard.is_pressed(mod):
-                    keyboard.release(mod)
-            except Exception:
-                pass
+        # send() already releases any modifier still held before pressing, so a
+        # user leaning on the hotkey's Shift cannot turn this into Ctrl+Shift+V
+        # in the target app, and it releases everything again afterwards. Win is
+        # deliberately left alone: a lone Win key-up opens the Start menu.
         send_keys("ctrl+v")
 
     def show_settings(self):
@@ -262,8 +255,26 @@ def selftest(app):
                 results.append(f"FAIL {label}: {exc!r}")
         app.root.after(delay, go)
 
+    def another_instance_running():
+        import win32api
+        import win32event
+        import winerror
+
+        handle = win32event.CreateMutex(None, False, f"Global\\WinThings.{APP}")
+        exists = win32api.GetLastError() == winerror.ERROR_ALREADY_EXISTS
+        win32api.CloseHandle(handle)
+        return exists
+
     def check_hotkey():
-        assert app.hotkeys.bound("popup"), app.hotkeys.error("popup")
+        if app.hotkeys.bound("popup"):
+            return
+        # RegisterHotKey gives one owner per combination system-wide, so a
+        # selftest run alongside the real app cannot also hold the hotkey. That
+        # is the mechanism working; stop the app to exercise this properly.
+        if another_instance_running():
+            results.append("     (another instance owns the hotkey - check skipped)")
+            return
+        raise AssertionError(app.hotkeys.error("popup") or "not bound")
 
     # A fresh install has an empty history, and an empty list is then the
     # correct result rather than a failure. Seed with --db to exercise these

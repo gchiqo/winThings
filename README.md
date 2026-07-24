@@ -1,33 +1,21 @@
 # WinThings
 
-Three independent Windows 11 tray utilities that share a look, a settings pattern
+Two independent Windows 11 tray utilities that share a look, a settings pattern
 and a config layout. Each runs as its own background process with its own tray
-icon; none of them touch Explorer, the Start menu or the real taskbar.
+icon; neither touches Explorer, the Start menu or the taskbar.
 
 | App | What it does | Default hotkey |
 |---|---|---|
 | [clipboard](clipboard/) | Searchable clipboard history that survives reboot | `Ctrl+Shift+V` |
 | [reader](reader/) | Reads the selected text aloud with a Piper neural voice | `Ctrl+Shift+A` |
-| [monitors](monitors/) | CPU/RAM/GPU/network readouts in the notification area | — |
 
-[dock/](dock/) is retired — a floating always-on-top panel, superseded by
-`monitors` plus native taskbar settings (see below). Still runnable with
-`python dock\app.py` if you want it back.
+Both start with Windows via `HKCU\...\Run` (`WinThingsClipboard`,
+`WinThingsReader`), toggleable from each settings window.
 
-## Using the real taskbar instead of a custom one
-
-Windows 11 removed deskbands, so nothing can add content to the taskbar strip
-without shell-level patching of Explorer, which is out of scope here. What the
-dock did can be had from the real taskbar plus the notification area:
-
-| Dock feature | Native equivalent |
-| --- | --- |
-| Pinned + running app icons | The taskbar already does this |
-| Windows expanded as visible chips | Settings -> Personalisation -> Taskbar -> Taskbar behaviours -> **Combine taskbar buttons and hide labels: Never** (registry `HKCU\...\Explorer\Advanced\TaskbarGlomLevel = 2`, needs an Explorer restart) |
-| CPU/RAM/GPU/network readouts | [monitors](monitors/) tray icons |
-
-To go back to grouped, unlabelled taskbar buttons, set `TaskbarGlomLevel` to `0`
-and restart Explorer.
+There is no system-monitor or dock app. Earlier versions had a floating dock
+panel and a set of CPU/RAM/GPU tray readouts; both were removed as unwanted. They
+remain in git history at commit `c094aba` (`git checkout c094aba -- dock monitors`)
+if anyone ever wants them back.
 
 ---
 
@@ -35,13 +23,11 @@ and restart Explorer.
 
 | | |
 |---|---|
-| ![taskbar](screenshots/taskbar-integrated.png) | The real taskbar doing the whole job: each window its own labelled button on the left, CPU/RAM/GPU readouts in the tray on the right next to the clipboard and reader icons. |
 | ![clipboard](screenshots/clipboard-search.png) | Clipboard popup filtering live as you type. |
 | ![reader](screenshots/reader-settings.png) | Reader settings, with the live status dot reporting the bound hotkey. |
 
-Also in [screenshots/](screenshots/): `tray-icons.png` (icon rendering at 64px
-and at the 16px Windows displays), `clipboard-popup.png`,
-`clipboard-settings.png`, and `dock-*.png` from the retired dock.
+Also in [screenshots/](screenshots/): `clipboard-popup.png`,
+`clipboard-settings.png`.
 
 ---
 
@@ -59,9 +45,6 @@ here: Piper 2023.11.14 in `reader\piper\`, and the `en_US-ryan-medium` voice (US
 male, medium quality) in `reader\voices\`. They are gitignored, so a fresh clone
 has to fetch them again — see [reader/README.md](reader/README.md).
 
-For the dock to make sense, auto-hide the real taskbar:
-Settings → Personalisation → Taskbar → Taskbar behaviours → Automatically hide.
-
 ---
 
 ## Running
@@ -71,14 +54,13 @@ Each app is standalone:
 ```
 python.exe clipboard\app.py
 python.exe reader\app.py
-python.exe dock\app.py
 ```
 
-Or drive all three with the launcher:
+Or drive both with the launcher:
 
 ```
 python.exe winthings.py              start everything not already running
-python.exe winthings.py dock reader  start just those
+python.exe winthings.py reader       start just that one
 python.exe winthings.py --status     what is running
 python.exe winthings.py --stop       stop everything
 python.exe winthings.py --console    start with consoles attached, to see tracebacks
@@ -94,19 +76,19 @@ named mutex, so launching one twice is a no-op rather than a duplicate tray icon
 ## Layout
 
 ```
-common/       shared by all three - treat as the suite's API
+common/       shared by both apps - treat as the suite's API
   config.py     JSON config: defaults, atomic writes, change subscriptions
   ui.py         SettingsWindow base + the row widgets + cross-thread pump()
-  theme.py      one palette and metric colours
+  theme.py      one palette, fonts and metrics
   tray.py       pystray wrapper, icons drawn at runtime
-  hotkey.py     global hotkey binding, capture, normalisation
+  hotkey.py     the public hotkey surface: normalise, display, record
+  winhotkey.py  RegisterHotKey implementation - no keyboard hook
+  keysend.py    SendInput key synthesis + stuck-modifier release
   autostart.py  start-with-Windows via the Run key
   singleton.py  named-mutex single-instance guard
   paths.py      %APPDATA%\WinThings\<app>\
 clipboard/    app.py store.py winclip.py popup.py settings.py
 reader/       app.py speech.py engine.py selection.py overlay.py ipc.py settings.py
-monitors/     app.py metrics.py trayicons.py settings.py
-dock/         retired floating panel - kept, not started by the launcher
 winthings.py  launcher
 ```
 
@@ -125,9 +107,24 @@ call `common.ui.pump(root)` once.
 These are real constraints of running unelevated Python on Windows, not
 oversights — they are documented per-app in more detail.
 
-**All apps.** The global hotkey hook is blind while an elevated window has focus;
-Windows blocks lower-integrity processes from hooking higher ones. Running an app
-as administrator fixes it for that app.
+**Both apps.** Global hotkeys go through `RegisterHotKey`, so each combination has
+exactly one owner system-wide. If something else already owns yours, the bind
+fails and the settings window says so instead of the hotkey silently doing
+nothing — measured on this machine, `Win+Shift+A` is already taken by another
+application. A hotkey also will not fire while an elevated window has focus,
+unless the app is elevated too.
+
+No app in this suite installs a keyboard hook. That is deliberate: the earlier
+implementation used the `keyboard` package's `suppress=True`, which hooks
+`WH_KEYBOARD_LL` and — because it cannot know on the Ctrl key-down whether a
+hotkey is coming — blocks the modifier prefix and re-injects it once the next key
+rules the combination out. Pressing Tab or Caps Lock after a modifier hits that
+replay path, and with two apps each running their own block-and-replay state
+machine, a dropped key-up left Ctrl or Shift stuck down. `RegisterHotKey` has the
+OS match and consume the combination, so there is no hook, no suppression state
+and nothing to replay. Synthetic keystrokes go through `SendInput`
+([common/keysend.py](common/keysend.py)), which always releases what it pressed
+and force-releases any modifier left held.
 
 **Clipboard.** The sensitive-app exclude list works two ways: it honours the
 `ExcludeClipboardContentFromMonitorProcessing` and `CanIncludeInClipboardHistory`
@@ -142,18 +139,3 @@ previous clipboard afterwards; that restore is **text-only**, so an image or fil
 list on the clipboard is lost when the hotkey fires. Reading mode has to fully
 synthesise before it can start highlighting, because Piper emits no word-level
 timing.
-
-**Monitors.** Windows renders tray icons at 16x16; these are drawn at 64x64 and
-downsampled, so two digits are crisp and three (`100`, `3.2M`) are readable but
-tight — the hover tooltip is the precise source. Tray icon order is Windows'
-decision, not the app's.
-
-**GPU metric.** On an Optimus laptop the discrete GPU parks itself and NVML then
-returns `NVML_ERROR_UNKNOWN` for every query after the first — measured here as
-1 success in 25 one-second polls. Recovery means tearing the NVML session down
-and re-initialising it, which costs ~575 ms, so it happens at most once every 10
-seconds — the GPU number therefore refreshes far more slowly than CPU, RAM and
-network. A parked GPU is genuinely idle, so a held 0% is accurate, but behaviour
-under sustained GPU load is untested.
-
-On machines with no NVIDIA GPU or no working NVML, the metric hides itself.

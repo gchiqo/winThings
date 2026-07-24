@@ -5,7 +5,7 @@ Each app is an independent process with its own tray icon, so they can be run
 individually. This just starts/stops them together for convenience.
 
     python winthings.py              start every app not already running
-    python winthings.py dock reader  start only those
+    python winthings.py reader       start only that one
     python winthings.py --status     what's running
     python winthings.py --stop       stop everything
     python winthings.py --console    start with consoles attached (for debugging)
@@ -23,12 +23,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 APPS = {
     "clipboard": "Clipboard history with search",
     "reader": "Read selected text aloud",
-    "monitors": "CPU/RAM/GPU/network readouts in the notification area",
 }
-
-# Retired: the floating dock panel that monitors/ replaced. Still runnable with
-# `python dock\app.py` if you want it back.
-EXTRA = {"dock": "Floating taskbar dock (superseded by monitors)"}
 
 
 def entry_point(app):
@@ -101,22 +96,20 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("apps", nargs="*", metavar="APP",
-                    help=f"apps to act on: {', '.join(APPS)} (default: all). "
-                         f"Also accepts: {', '.join(EXTRA)}")
+                    help=f"apps to act on: {', '.join(APPS)} (default: all)")
     ap.add_argument("--stop", action="store_true", help="stop instead of start")
     ap.add_argument("--status", action="store_true", help="show what's running")
     ap.add_argument("--console", action="store_true",
                     help="attach a console (shows tracebacks)")
     args = ap.parse_args()
 
-    known = {**APPS, **EXTRA}
-    unknown = [a for a in args.apps if a not in known]
+    unknown = [a for a in args.apps if a not in APPS]
     if unknown:
-        ap.error(f"unknown app(s): {', '.join(unknown)}. Choose from: {', '.join(known)}")
+        ap.error(f"unknown app(s): {', '.join(unknown)}. Choose from: {', '.join(APPS)}")
     targets = args.apps or list(APPS)
 
     if args.status:
-        for app in known:
+        for app in APPS:
             built = "" if os.path.exists(entry_point(app)) else "  (not built)"
             print(f"  {app:<10} {'running' if running(app) else 'stopped'}{built}")
         return

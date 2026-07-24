@@ -93,9 +93,8 @@ def sequence():
 def modifiers_down():
     """Which of Shift/Alt/Win are physically down right now.
 
-    GetAsyncKeyState rather than keyboard.is_pressed: the latter answers from
-    the `keyboard` package's own hook state, which is only populated once a hook
-    is installed and misses keys pressed before that.
+    GetAsyncKeyState asks the OS directly, which is the only trustworthy source:
+    no keyboard hook is installed anywhere in this suite any more.
     """
     return [vk for vk in MODIFIER_KEYS
             if win32api.GetAsyncKeyState(vk) & 0x8000]

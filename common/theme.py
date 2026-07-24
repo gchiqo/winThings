@@ -20,15 +20,6 @@ OK = "#3ecf8e"
 WARN = "#e0a33e"
 ERROR = "#e5484d"
 
-# Metric readouts in the dock share these so CPU/RAM/GPU/NET read as one row.
-METRIC_COLORS = {
-    "cpu": "#4c8dff",
-    "ram": "#3ecf8e",
-    "gpu": "#c07aff",
-    "net_up": "#e0a33e",
-    "net_down": "#4cc9f0",
-}
-
 FONT = "Segoe UI"
 FONT_MONO = "Cascadia Mono"
 FONT_SIZE = 13

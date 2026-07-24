@@ -93,5 +93,9 @@ mechanisms are implemented, and they are not equally good:
   when the popup is what you came from, and falls back to `AttachThreadInput`,
   but it cannot give focus to an elevated window from this non-elevated process.
   In that case the entry is still copied — press `Ctrl+V` yourself.
-* The global hotkey uses a `WH_KEYBOARD_LL` hook, which does not see keys pressed
-  while an elevated window has focus unless this process is also elevated.
+* The global hotkey uses `RegisterHotKey`, not a keyboard hook. One consequence
+  worth knowing: a combination has a single owner system-wide, so if another app
+  already holds yours the bind fails and the settings window says so. It also
+  will not fire while an elevated window has focus unless this app is elevated.
+  A second instance started with `--selftest` cannot hold the hotkey either,
+  since the real one already does.
