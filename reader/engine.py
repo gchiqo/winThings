@@ -14,12 +14,15 @@ and *aborts* (not drains) the audio stream, so the sound cuts immediately rather
 than finishing the sentence already handed to the device.
 """
 
+import logging
 import os
 import subprocess
 import threading
 import wave
 
 import speech
+
+log = logging.getLogger("reader.engine")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PIPER_DIR = os.path.join(HERE, "piper")
@@ -28,11 +31,15 @@ ESPEAK_DATA = os.path.join(PIPER_DIR, "espeak-ng-data")
 
 # Piper emits 16-bit mono; 4096 bytes is ~2048 frames, about 90 ms at 22 kHz.
 CHUNK_BYTES = 4096
+FRAME_BYTES = 2  # int16 mono
 
-# Open the device only once this much audio is in hand. Piper synthesises
-# faster than real time once warm, but the first chunk arrives late (model
-# load), and starting the stream on it would underrun audibly.
-PREBUFFER_SECONDS = 0.2
+# Hold this much audio before opening the device. Piper synthesises faster than
+# real time once warm, but the first chunk arrives late (model load ~0.3-0.7s),
+# and a device fed by blocking writes underran during that gap — replaying its
+# last buffer as the garbled "bubbling" at the start of a read. The stream is now
+# callback-driven and zero-fills on starvation (a brief silence, never garbage),
+# so this prebuffer is just to make even that silence unlikely at the start.
+PREBUFFER_SECONDS = 0.35
 
 # No console window when launched from pythonw, and no flash when launched
 # from python.exe.
@@ -200,6 +207,7 @@ class Engine:
         try:
             target(*args)
         except Exception as exc:  # a worker crash must not take the tray down
+            log.exception("synthesis/playback worker failed")
             self._emit("error", str(exc))
         finally:
             with self._lock:
@@ -286,13 +294,42 @@ class Engine:
         return None
 
     def _pump(self, read, rate, volume, on_start=None):
-        """Feed PCM from `read(nbytes)` into the output device until it dries up."""
+        """Feed PCM from `read(nbytes)` into the output device until it dries up.
+
+        A callback stream, not blocking writes: the device pulls from a shared
+        buffer on its own thread and zero-fills when the buffer is momentarily
+        empty. A slow producer therefore yields a brief silence rather than the
+        garbled replay a starved blocking stream produced. The feeder here keeps
+        that buffer topped up, then waits for it to drain so the final word is
+        never cut off.
+        """
         import sounddevice as sd
 
+        buf = bytearray()
+        buf_lock = threading.Lock()
+        producing = {"on": True}
+        drained = threading.Event()
+
+        def callback(outdata, frames, _time, _status):
+            need = frames * FRAME_BYTES
+            with buf_lock:
+                take = min(need, len(buf))
+                outdata[:take] = buf[:take]
+                del buf[:take]
+                empty = not buf
+            if take < need:
+                outdata[take:] = b"\x00" * (need - take)  # silence, not garbage
+                if not producing["on"] and empty:
+                    drained.set()
+                    raise sd.CallbackStop
+
+        def buffered():
+            with buf_lock:
+                return len(buf)
+
         stream = None
-        prebuffer = bytearray()
-        needed = int(rate * PREBUFFER_SECONDS) * 2
         odd = b""  # a pipe read can split a sample across two chunks
+        needed = int(rate * PREBUFFER_SECONDS) * FRAME_BYTES
         try:
             while not self._stop.is_set():
                 data = read(CHUNK_BYTES)
@@ -300,22 +337,31 @@ class Engine:
                     break
                 data = odd + data
                 odd, data = (data[-1:], data[:-1]) if len(data) % 2 else (b"", data)
-                if stream is None:
-                    prebuffer += data
-                    if len(prebuffer) < needed:
-                        continue
-                    stream = self._open_stream(sd, rate, on_start)
-                    data, prebuffer = bytes(prebuffer), bytearray()
-                stream.write(scale_pcm(data, volume))
-            if stream is None and prebuffer and not self._stop.is_set():
-                stream = self._open_stream(sd, rate, on_start)
-                stream.write(scale_pcm(bytes(prebuffer), volume))
-            if stream is not None and not self._stop.is_set():
-                stream.stop()  # unlike abort(), this lets the tail play out
+                scaled = scale_pcm(data, volume)
+                with buf_lock:
+                    buf += scaled
+                if stream is None and buffered() >= needed:
+                    stream = self._open_stream(sd, rate, callback, on_start)
+
+            # Producer done. Open the device if the whole clip was shorter than
+            # the prebuffer, then let the callback play out what remains.
+            if not self._stop.is_set():
+                if stream is None and buffered():
+                    stream = self._open_stream(sd, rate, callback, on_start)
+                producing["on"] = False
+                # Piper often synthesises far faster than real time, so the
+                # buffer can still hold most of the clip here. Wait for the
+                # callback to actually drain it (unbounded), but keep checking
+                # stop() so an interrupt is still immediate.
+                while stream is not None and not drained.is_set():
+                    if self._stop.is_set():
+                        break
+                    drained.wait(timeout=0.1)
         except Exception:
             if not self._stop.is_set():
                 raise  # a real device error; a stop() aborting us is expected
         finally:
+            producing["on"] = False
             with self._lock:
                 self._stream = None
             if stream is not None:
@@ -324,8 +370,9 @@ class Engine:
                 except Exception:
                     pass
 
-    def _open_stream(self, sd, rate, on_start=None):
-        stream = sd.RawOutputStream(samplerate=rate, channels=1, dtype="int16")
+    def _open_stream(self, sd, rate, callback, on_start=None):
+        stream = sd.RawOutputStream(samplerate=rate, channels=1, dtype="int16",
+                                    blocksize=0, callback=callback)
         stream.start()
         with self._lock:
             self._stream = stream

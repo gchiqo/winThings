@@ -26,6 +26,7 @@ that process over a loopback socket (ipc.py) instead of a PID file.
 """
 
 import argparse
+import logging
 import sys
 import threading
 import time
@@ -43,10 +44,13 @@ from settings import ReaderSettings, status_for
 from common import autostart, singleton, theme
 from common.config import Config
 from common.hotkey import HotkeyManager
+from common.paths import log_path
 from common.tray import Tray
 from common.ui import call_on_ui_thread
 
 APP = "reader"
+
+log = logging.getLogger(APP)
 
 DEFAULTS = {
     "voice": "",                 # "" -> PREFERRED_VOICE, else first found
@@ -139,10 +143,13 @@ class ReaderApp:
 
     # -- actions ----------------------------------------------------------
     def toggle(self):
-        """Hotkey callback (runs on the keyboard hook thread): read, or stop."""
-        if self.stop():
-            return
-        self._in_background(self._read_job, False)
+        """Hotkey callback (runs on the hotkey thread): read, or stop."""
+        try:
+            if self.stop():
+                return
+            self._in_background(self._read_job, False)
+        except Exception:
+            log.exception("toggle failed")
 
     def read_selection(self):
         """Same, but started from our own UI, so focus has to go back first."""
@@ -179,8 +186,15 @@ class ReaderApp:
 
     def _in_background(self, fn, *args):
         """Selection capture sleeps and playback blocks; keep both off the UI,
-        tray and keyboard-hook threads."""
-        threading.Thread(target=fn, args=args, daemon=True).start()
+        tray and hotkey threads. Exceptions are logged, never swallowed silently:
+        a daemon thread dying quietly is how a 'crash' hides."""
+        def guarded():
+            try:
+                fn(*args)
+            except Exception:
+                log.exception("background job %s failed", getattr(fn, "__name__", fn))
+
+        threading.Thread(target=guarded, daemon=True).start()
 
     def notify(self, message):
         if self.tray is not None and message:
@@ -313,11 +327,24 @@ def main(argv=None):
         print("Piper Read Aloud is already running.", file=sys.stderr)
         return 0
 
+    # File logging so a crash leaves a trace: "it crashed" with nothing on disk
+    # is undiagnosable, and this runs under pythonw with no console to catch a
+    # traceback.
+    logging.basicConfig(
+        filename=log_path(APP), filemode="a", level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(threadName)s %(message)s",
+    )
+    log.info("reader starting")
+
     app = ReaderApp(config)
     app.start(open_settings=args.settings)
     try:
         app.window.mainloop()
+    except Exception:
+        log.exception("reader crashed in mainloop")
+        raise
     finally:
+        log.info("reader shutting down")
         app.shutdown()
     return 0
 
