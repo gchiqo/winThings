@@ -1,11 +1,17 @@
 """Text preparation and voice discovery — carried over from the Linux version.
 
 Everything in this module is pure Python with no OS dependency, so it is a
-verbatim port of read-aloud.py's cleaning/chunking/voice code. It was tuned
-against real Piper output (code blocks and hashes make the neural voice
-"bubble", long unbroken utterances make it garble), so it is deliberately kept
-byte-for-byte identical rather than tidied up; reader/tests/test_parity.py
-diffs it against the original on nasty inputs.
+close port of read-aloud.py's cleaning/chunking/voice code. It was tuned against
+real Piper output (code blocks and hashes make the neural voice "bubble", long
+unbroken utterances make it garble), so the token logic is kept as-is rather
+than tidied up.
+
+One deliberate Windows-side addition: strip_symbols() removes emoji, math,
+currency, arrows and other pictographs (Unicode category S*) before anything
+else. The espeak-ng build bundled with piper.exe has no phonemes for those and
+answers them with garbled "bla bla" noise; the Linux espeak-ng read or skipped
+them, so the original didn't need this. Letters of every script are still kept,
+so a matching voice can read Georgian, Cyrillic or Greek.
 
 The only Windows-side change is that discover_voices() takes the voices
 directory as an argument instead of reading a module global, because the config
@@ -48,6 +54,21 @@ KEEP_PUNCT = set("'.,!?;:%$-")
 
 def _has_letter_or_digit(s):
     return any(c.isalpha() or c.isdigit() for c in s)
+
+
+def strip_symbols(s):
+    """Replace Unicode symbol characters with a space.
+
+    Emoji, math (∑ ∞ ∀ ∈), currency (€ £ ¥), arrows, dingbats and
+    other pictographs all fall in Unicode's S* categories. espeak-ng has no
+    phonemes for most of them, and Piper answers an unpronounceable token by
+    bubbling into garbled 'bla bla' noise. Letters of every script (category L,
+    including Georgian and Cyrillic) and digits are kept, so a matching voice can
+    still read them; only the symbols go. Replacing with a space, not nothing,
+    keeps word boundaries intact.
+    """
+    return "".join(" " if unicodedata.category(c).startswith("S") else c
+                   for c in s)
 
 
 def clean_token(tok):
@@ -94,6 +115,7 @@ def clean_for_speech(s):
         return ""
     s = unicodedata.normalize("NFKC", s)
     s = CTRL_RE.sub("", s)
+    s = strip_symbols(s)  # emoji / math / currency / dingbats -> space
     s = URL_RE.sub(" ", s)
     s = WWW_RE.sub(" ", s)
     s = EMAIL_RE.sub(

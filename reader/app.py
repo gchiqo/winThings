@@ -62,6 +62,10 @@ DEFAULTS = {
     "autostart": False,
     "voices_dir": "",            # blank -> reader\voices
     "piper_exe": "",             # blank -> reader\piper\piper.exe, then PATH
+    # Silence padding to mask Bluetooth link latency (see engine.py). Raise
+    # lead_in_silence if the first word still garbles on a slow-waking headset.
+    "lead_in_silence": 0.8,
+    "tail_out_silence": 0.6,
 }
 
 TEST_PHRASE = "This is a test of the selected Piper voice."

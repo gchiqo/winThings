@@ -33,13 +33,20 @@ ESPEAK_DATA = os.path.join(PIPER_DIR, "espeak-ng-data")
 CHUNK_BYTES = 4096
 FRAME_BYTES = 2  # int16 mono
 
-# Hold this much audio before opening the device. Piper synthesises faster than
-# real time once warm, but the first chunk arrives late (model load ~0.3-0.7s),
-# and a device fed by blocking writes underran during that gap — replaying its
-# last buffer as the garbled "bubbling" at the start of a read. The stream is now
-# callback-driven and zero-fills on starvation (a brief silence, never garbage),
-# so this prebuffer is just to make even that silence unlikely at the start.
-PREBUFFER_SECONDS = 0.35
+# Silence padding around every utterance, to hide Bluetooth's link latency.
+#
+# A Bluetooth headset (the common default output here) suspends its audio link
+# when idle. Waking it takes a beat during which the first audio is corrupted —
+# the garbled "bla bla / vsbvsbsb" at the start — and closing it drops whatever
+# is still in the high-latency buffer, which eats the last word. A wired device
+# just sees a short silence at each end.
+#
+# So the stream opens immediately on LEAD_IN_SECONDS of silence (which overlaps
+# piper's synthesis, so it costs little wall time) and the link warms up on that
+# silence instead of the first word; TAIL_OUT_SECONDS of trailing silence means
+# the buffer Bluetooth discards on close is silence, not speech.
+LEAD_IN_SECONDS = 0.8
+TAIL_OUT_SECONDS = 0.6
 
 # No console window when launched from pythonw, and no flash when launched
 # from python.exe.
@@ -113,6 +120,15 @@ class Engine:
             return fallback
         value = self.config[key]
         return fallback if value is None else value
+
+    def _cfg_num(self, key, fallback, lo=0.0, hi=5.0):
+        """Numeric config value, clamped; the constant fallback when unset."""
+        if self.config is None:
+            return fallback
+        try:
+            return max(lo, min(hi, float(self.config.get(key, fallback))))
+        except (TypeError, ValueError):
+            return fallback
 
     def _settings(self, voice=None, speed=None, volume=None, pause=None):
         if self.config is not None:
@@ -309,6 +325,7 @@ class Engine:
         buf_lock = threading.Lock()
         producing = {"on": True}
         drained = threading.Event()
+        started = {"real": False}
 
         def callback(outdata, frames, _time, _status):
             need = frames * FRAME_BYTES
@@ -323,14 +340,20 @@ class Engine:
                     drained.set()
                     raise sd.CallbackStop
 
-        def buffered():
-            with buf_lock:
-                return len(buf)
+        # Lead-in / tail-out are tunable: a slower-waking headset may need more.
+        lead = self._cfg_num("lead_in_silence", LEAD_IN_SECONDS)
+        tail = self._cfg_num("tail_out_silence", TAIL_OUT_SECONDS)
 
+        # Seed the lead-in silence and open the device now, before any speech is
+        # ready, so a Bluetooth link wakes on this silence while piper is still
+        # synthesising. The callback zero-fills anyway, so if synthesis outruns
+        # the lead-in the extra silence is seamless.
+        with buf_lock:
+            buf += b"\x00" * (int(rate * lead) * FRAME_BYTES)
         stream = None
         odd = b""  # a pipe read can split a sample across two chunks
-        needed = int(rate * PREBUFFER_SECONDS) * FRAME_BYTES
         try:
+            stream = self._open_stream(sd, rate, callback)
             while not self._stop.is_set():
                 data = read(CHUNK_BYTES)
                 if not data:
@@ -340,20 +363,21 @@ class Engine:
                 scaled = scale_pcm(data, volume)
                 with buf_lock:
                     buf += scaled
-                if stream is None and buffered() >= needed:
-                    stream = self._open_stream(sd, rate, callback, on_start)
+                if not started["real"]:
+                    started["real"] = True
+                    if on_start:
+                        on_start()  # real audio queued: start the overlay clock
 
-            # Producer done. Open the device if the whole clip was shorter than
-            # the prebuffer, then let the callback play out what remains.
             if not self._stop.is_set():
-                if stream is None and buffered():
-                    stream = self._open_stream(sd, rate, callback, on_start)
+                # Trailing silence so a Bluetooth close drops silence, not speech.
+                with buf_lock:
+                    buf += b"\x00" * (int(rate * tail) * FRAME_BYTES)
                 producing["on"] = False
                 # Piper often synthesises far faster than real time, so the
                 # buffer can still hold most of the clip here. Wait for the
                 # callback to actually drain it (unbounded), but keep checking
                 # stop() so an interrupt is still immediate.
-                while stream is not None and not drained.is_set():
+                while not drained.is_set():
                     if self._stop.is_set():
                         break
                     drained.wait(timeout=0.1)
@@ -370,14 +394,12 @@ class Engine:
                 except Exception:
                     pass
 
-    def _open_stream(self, sd, rate, callback, on_start=None):
+    def _open_stream(self, sd, rate, callback):
         stream = sd.RawOutputStream(samplerate=rate, channels=1, dtype="int16",
                                     blocksize=0, callback=callback)
         stream.start()
         with self._lock:
             self._stream = stream
-        if on_start:
-            on_start()
         return stream
 
 
