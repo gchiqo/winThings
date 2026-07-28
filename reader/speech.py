@@ -50,6 +50,9 @@ DASHES_RE = re.compile(r"-{2,}")
 TOKEN_RE = re.compile(r"\S+")
 CODEY_RE = re.compile(r"[_(){}\[\]<>/\\=+*&|^~`@#]|::|->|=>")
 KEEP_PUNCT = set("'.,!?;:%$-")
+# An upper-case letter, a dot, then a letter: the "CLAUDE.md" pattern espeak
+# chokes on. Upper-case on the left only, so e.g. / i.e. / readme.md are spared.
+DOTTED_ID_RE = re.compile(r"([A-Z])\.([A-Za-z])")
 
 
 def _has_letter_or_digit(s):
@@ -116,6 +119,12 @@ def clean_for_speech(s):
     s = unicodedata.normalize("NFKC", s)
     s = CTRL_RE.sub("", s)
     s = strip_symbols(s)  # emoji / math / currency / dingbats -> space
+    # Dotted identifiers like "CLAUDE.md": an upper-case run joined by a dot to a
+    # lower-case suffix derails espeak-ng's phonemiser and garbles the WHOLE
+    # utterance into "bla bla" noise (verified by transcribing the output).
+    # Speaking the dot as a word gap fixes it; readme.md, e.g., 3.14 and U.S.A.
+    # do not match and are left alone.
+    s = DOTTED_ID_RE.sub(r"\1 \2", s)
     s = URL_RE.sub(" ", s)
     s = WWW_RE.sub(" ", s)
     s = EMAIL_RE.sub(

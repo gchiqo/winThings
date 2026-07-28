@@ -66,6 +66,11 @@ DEFAULTS = {
     # lead_in_silence if the first word still garbles on a slow-waking headset.
     "lead_in_silence": 0.8,
     "tail_out_silence": 0.6,
+    # Piper randomness. Lower than piper's own 0.667 / 0.8 to stop the occasional
+    # garbled/mumbled render; lower still (e.g. 0.2) for maximum consistency, or
+    # raise toward the defaults for more natural variation.
+    "noise_scale": 0.5,
+    "noise_w": 0.4,
 }
 
 TEST_PHRASE = "This is a test of the selected Piper voice."

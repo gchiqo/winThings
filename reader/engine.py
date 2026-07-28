@@ -64,7 +64,16 @@ def piper_exe(override=None):
     return shutil.which("piper") or shutil.which("piper.exe") or PIPER_EXE
 
 
-def piper_command(exe, info, ls, pause, out_file=None):
+# Piper's own defaults (from most voice configs). noise_w especially drives the
+# random "bubbling / mumbling" — Piper samples fresh noise every run, so the same
+# text occasionally renders garbled. Lower values trade a little prosody variety
+# for markedly more consistent, artifact-free speech.
+DEFAULT_NOISE_SCALE = 0.5
+DEFAULT_NOISE_W = 0.4
+
+
+def piper_command(exe, info, ls, pause, out_file=None,
+                  noise_scale=DEFAULT_NOISE_SCALE, noise_w=DEFAULT_NOISE_W):
     cmd = [exe, "-m", info["model"], "-c", info["config"]]
     # Older piper builds need espeak-ng-data pointed at explicitly; newer ones
     # find it next to the exe. Only pass the flag when the directory is really
@@ -72,6 +81,10 @@ def piper_command(exe, info, ls, pause, out_file=None):
     if os.path.isdir(ESPEAK_DATA):
         cmd += ["--espeak_data", ESPEAK_DATA]
     cmd += ["-q", "--length_scale", f"{ls}", "--sentence_silence", f"{pause}"]
+    if noise_scale is not None:
+        cmd += ["--noise_scale", f"{noise_scale}"]
+    if noise_w is not None:
+        cmd += ["--noise_w", f"{noise_w}"]
     cmd += ["-f", out_file] if out_file else ["--output_raw"]
     return cmd
 
@@ -129,6 +142,13 @@ class Engine:
             return max(lo, min(hi, float(self.config.get(key, fallback))))
         except (TypeError, ValueError):
             return fallback
+
+    def _noise(self):
+        """(noise_scale, noise_w) for piper — lower than piper's own defaults to
+        curb the random bubbling. Tunable via config for users who want more
+        natural variation back."""
+        return (self._cfg_num("noise_scale", DEFAULT_NOISE_SCALE, 0.0, 1.5),
+                self._cfg_num("noise_w", DEFAULT_NOISE_W, 0.0, 1.5))
 
     def _settings(self, voice=None, speed=None, volume=None, pause=None):
         if self.config is not None:
@@ -239,8 +259,10 @@ class Engine:
 
     # -- workers ----------------------------------------------------------
     def _stream_piper(self, text, exe, info, ls, pause, volume):
+        noise_scale, noise_w = self._noise()
         proc = subprocess.Popen(
-            piper_command(exe, info, ls, pause),
+            piper_command(exe, info, ls, pause,
+                          noise_scale=noise_scale, noise_w=noise_w),
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             cwd=os.path.dirname(exe) or None, creationflags=_NO_WINDOW,
         )
@@ -268,9 +290,11 @@ class Engine:
 
         fd, wav_path = tempfile.mkstemp(suffix=".wav", prefix="piper-read-")
         os.close(fd)
+        noise_scale, noise_w = self._noise()
         try:
             proc = subprocess.Popen(
-                piper_command(exe, info, ls, pause, out_file=wav_path),
+                piper_command(exe, info, ls, pause, out_file=wav_path,
+                              noise_scale=noise_scale, noise_w=noise_w),
                 stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE, cwd=os.path.dirname(exe) or None,
                 creationflags=_NO_WINDOW,
