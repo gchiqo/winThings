@@ -29,6 +29,7 @@ from common import singleton, theme, ui
 from common.config import Config
 from common.hotkey import HotkeyManager, normalize, pretty, send as send_keys
 from common.paths import data_path, log_path
+from common import tray as tray_mod
 from common.tray import Tray
 
 import winclip
@@ -84,7 +85,8 @@ class ClipboardApp:
 
     # -- setup ------------------------------------------------------------
     def build_tray(self):
-        tray = Tray(APP, "Clipboard Manager", "V", theme.ACCENT)
+        tray_mod.set_app_id("WinThings.Clipboard")
+        tray = Tray(APP, "Clipboard Manager", "clipboard", theme.ACCENT)
         tray.add("Open history", lambda: ui.call_on_ui_thread(self.show_popup),
                  default=True)
         tray.add("Settings…", lambda: ui.call_on_ui_thread(self.show_settings))

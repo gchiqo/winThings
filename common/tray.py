@@ -1,7 +1,12 @@
-"""pystray wrapper: one tray icon per app, built from a generated PNG.
+"""pystray wrapper: one tray icon per app, drawn at runtime.
 
 Icons are drawn with Pillow rather than shipped as files so there's no asset to
-lose, and so each app can tint its glyph from the shared palette.
+lose. Each app names an icon "kind" ("reader", "clipboard") and gets art that
+says what it does; an unknown kind falls back to a lettered badge.
+
+set_app_id() gives the process a real Windows application identity, so the tray
+and its settings page label the icon by the app instead of "Python" (the
+description of the pythonw.exe the tray actually runs under).
 """
 
 import threading
@@ -10,34 +15,98 @@ from PIL import Image, ImageDraw
 
 from . import theme
 
+WHITE = (255, 255, 255, 255)
+_HI_RES = 256  # draw art large, then downsample so it stays crisp at 16-32 px
 
-def make_icon(glyph, color=theme.ACCENT, size=64):
-    """Rounded square with a letter/symbol punched into it."""
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+
+def _hex(color):
+    color = color.lstrip("#")
+    return tuple(int(color[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _badge(color):
+    """Rounded, softly-shaded square in the app colour, at _HI_RES."""
+    s = _HI_RES
+    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    top = _hex(color)
+    bot = tuple(max(0, int(c * 0.78)) for c in top)
+    grad = Image.new("RGBA", (1, s))
+    for y in range(s):
+        t = y / (s - 1)
+        grad.putpixel((0, y), tuple(int(top[i] * (1 - t) + bot[i] * t)
+                                    for i in range(3)) + (255,))
+    grad = grad.resize((s, s))
+    mask = Image.new("L", (s, s), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([6, 6, s - 7, s - 7],
+                                           radius=s // 5, fill=255)
+    img.paste(grad, (0, 0), mask)
+    return img
+
+
+def _draw_reader(img, color):
+    """A speaker with sound waves — 'reads aloud'."""
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle([2, 2, size - 3, size - 3], radius=size // 5, fill=color)
+    cy = _HI_RES // 2
+    d.rectangle([56, cy - 26, 86, cy + 26], fill=WHITE)
+    d.polygon([(86, cy - 26), (128, cy - 58), (128, cy + 58), (86, cy + 26)],
+              fill=WHITE)
+    for i, r in enumerate((34, 58, 82)):
+        d.arc([150 - r, cy - r, 150 + r, cy + r], start=-45, end=45,
+              fill=WHITE, width=12 - i * 2)
 
-    # Pillow's default bitmap font is tiny; scale a text layer up so the glyph
-    # fills the badge without needing a TTF on disk.
-    scale = 4
-    layer = Image.new("RGBA", (size * scale, size * scale), (0, 0, 0, 0))
-    ld = ImageDraw.Draw(layer)
+
+def _draw_clipboard(img, color):
+    """A clipboard with a search magnifier — 'searchable clipboard'."""
+    d = ImageDraw.Draw(img)
+    acc = _hex(color) + (255,)
+    d.rounded_rectangle([70, 58, 186, 210], radius=16, fill=WHITE)
+    d.rounded_rectangle([104, 40, 152, 74], radius=10, fill=WHITE)
+    d.rounded_rectangle([112, 48, 144, 66], radius=6, fill=acc)
+    for y in (100, 126):
+        d.rounded_rectangle([88, y, 168, y + 10], radius=5, fill=acc)
+    d.ellipse([116, 132, 168, 184], outline=acc, width=12)
+    d.line([166, 182, 196, 212], fill=acc, width=16)
+    d.ellipse([116, 132, 168, 184], outline=WHITE, width=4)
+
+
+_ART = {"reader": _draw_reader, "clipboard": _draw_clipboard}
+
+
+def _draw_letter(img, glyph):
+    """Fallback: a single letter, for kinds without dedicated art."""
+    d = ImageDraw.Draw(img)
     try:
         from PIL import ImageFont
 
-        fnt = ImageFont.truetype("segoeuib.ttf", int(size * scale * 0.62))
+        fnt = ImageFont.truetype("segoeuib.ttf", int(_HI_RES * 0.6))
     except (OSError, ImportError):
-        fnt = None
-    if fnt is not None:
-        box = ld.textbbox((0, 0), glyph, font=fnt)
-        ld.text(
-            ((size * scale - box[2] + box[0]) / 2 - box[0],
-             (size * scale - box[3] + box[1]) / 2 - box[1]),
-            glyph, font=fnt, fill=(255, 255, 255, 255),
-        )
-        layer = layer.resize((size, size), Image.LANCZOS)
-        img.alpha_composite(layer)
-    return img
+        return
+    box = d.textbbox((0, 0), glyph, font=fnt)
+    d.text(((_HI_RES - box[2] + box[0]) / 2 - box[0],
+            (_HI_RES - box[3] + box[1]) / 2 - box[1]),
+           glyph, font=fnt, fill=WHITE)
+
+
+def make_icon(kind, color=theme.ACCENT, size=64):
+    """Badge art for `kind` ("reader"/"clipboard"), or a lettered fallback."""
+    img = _badge(color)
+    drawer = _ART.get(kind)
+    if drawer is not None:
+        drawer(img, color)
+    else:
+        _draw_letter(img, kind)
+    return img.resize((size, size), Image.LANCZOS)
+
+
+def set_app_id(app_id):
+    """Give this process an explicit AppUserModelID so Windows labels the tray
+    icon by the app, not by the pythonw.exe it runs under. Best-effort."""
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(str(app_id))
+    except Exception:
+        pass
 
 
 class Tray:
@@ -48,10 +117,10 @@ class Tray:
     free for Tk (which insists on being the main thread).
     """
 
-    def __init__(self, app_name, title, glyph, color=theme.ACCENT):
+    def __init__(self, app_name, title, kind, color=theme.ACCENT):
         self.app_name = app_name
         self.title = title
-        self._glyph = glyph
+        self._kind = kind
         self._color = color
         self._items = []
         self._icon = None
@@ -93,7 +162,7 @@ class Tray:
 
         self._icon = pystray.Icon(
             self.app_name,
-            icon=make_icon(self._glyph, self._color),
+            icon=make_icon(self._kind, self._color),
             title=self.title,
             menu=self._build_menu(),
         )

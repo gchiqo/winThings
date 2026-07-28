@@ -83,6 +83,15 @@ def parse(spec):
     if key in NAMED_KEYS:
         return mods, NAMED_KEYS[key]
     if len(key) == 1:
+        # A-Z and 0-9 map to VK codes equal to their ASCII upper-case value,
+        # independent of the active keyboard layout. VkKeyScanW is layout-
+        # dependent and returns -1 for e.g. 'v' while a Georgian (or any non-
+        # Latin) layout is active, which broke hotkey binding entirely. Use the
+        # direct mapping for these and RegisterHotKey then fires on the physical
+        # key regardless of layout.
+        ch = key.upper()
+        if "A" <= ch <= "Z" or "0" <= ch <= "9":
+            return mods, ord(ch)
         scan = user32.VkKeyScanW(ctypes.c_wchar(key))
         if scan != -1:
             return mods, scan & 0xFF

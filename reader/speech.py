@@ -50,9 +50,22 @@ DASHES_RE = re.compile(r"-{2,}")
 TOKEN_RE = re.compile(r"\S+")
 CODEY_RE = re.compile(r"[_(){}\[\]<>/\\=+*&|^~`@#]|::|->|=>")
 KEEP_PUNCT = set("'.,!?;:%$-")
-# An upper-case letter, a dot, then a letter: the "CLAUDE.md" pattern espeak
-# chokes on. Upper-case on the left only, so e.g. / i.e. / readme.md are spared.
-DOTTED_ID_RE = re.compile(r"([A-Z])\.([A-Za-z])")
+
+# Separators inside dotted/pathy identifiers, replaced with a space so espeak
+# reads the parts as words instead of choking on the whole token. Ordered and
+# scoped to spare decimals, times and normal sentence punctuation:
+_DOT_BETWEEN_WORDS = re.compile(r"(?<=[A-Za-z])\.(?=[A-Za-z0-9])")  # a.b, file.ext
+_LEADING_DOT = re.compile(r"(?<!\S)\.(?=[A-Za-z])")                 # .env
+# a colon with a letter on at least one side (example:6, key:value); digit:digit
+# times/ratios (3:30, 16:9) are left alone.
+_COLON_ID = re.compile(r"(?<=[A-Za-z]):(?=\w)|(?<=\w):(?=[A-Za-z])")
+
+
+def normalize_identifiers(s):
+    s = _DOT_BETWEEN_WORDS.sub(" ", s)
+    s = _LEADING_DOT.sub(" ", s)
+    s = _COLON_ID.sub(" ", s)
+    return s
 
 
 def _has_letter_or_digit(s):
@@ -119,18 +132,19 @@ def clean_for_speech(s):
     s = unicodedata.normalize("NFKC", s)
     s = CTRL_RE.sub("", s)
     s = strip_symbols(s)  # emoji / math / currency / dingbats -> space
-    # Dotted identifiers like "CLAUDE.md": an upper-case run joined by a dot to a
-    # lower-case suffix derails espeak-ng's phonemiser and garbles the WHOLE
-    # utterance into "bla bla" noise (verified by transcribing the output).
-    # Speaking the dot as a word gap fixes it; readme.md, e.g., 3.14 and U.S.A.
-    # do not match and are left alone.
-    s = DOTTED_ID_RE.sub(r"\1 \2", s)
     s = URL_RE.sub(" ", s)
     s = WWW_RE.sub(" ", s)
     s = EMAIL_RE.sub(
         lambda m: re.sub(r"[._%+-]", " ", m.group(1)) + " at " + re.sub(r"\.", " dot ", m.group(2)),
         s,
     )
+    # Dotted / colon-joined technical tokens — CLAUDE.md, .env.example:6,
+    # config.v2 — derail espeak-ng's phonemiser and garble the WHOLE utterance
+    # into "bla bla" noise (verified by transcribing the output). Speaking the
+    # separators as word gaps fixes it. Runs AFTER URL/email handling so those
+    # aren't broken first; decimals (3.14), digit:digit times (3:30) and
+    # sentence periods followed by a space are all left intact.
+    s = normalize_identifiers(s)
     s = RULE_RE.sub(" ", s)
     s = DASHES_RE.sub(" ", s)
     s = TOKEN_RE.sub(lambda m: clean_token(m.group(0)), s)

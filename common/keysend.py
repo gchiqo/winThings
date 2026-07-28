@@ -137,9 +137,17 @@ def send(spec, settle=0.02):
         elif part in NAMED_KEYS:
             key_vk = NAMED_KEYS[part]
         elif len(part) == 1:
-            scan = user32.VkKeyScanW(ctypes.c_wchar(part))
-            if scan != -1:
-                key_vk = scan & 0xFF
+            # A-Z / 0-9 have VK codes equal to their ASCII upper-case value,
+            # independent of layout. VkKeyScanW returns -1 for these under a
+            # non-Latin (e.g. Georgian) layout, which broke the synthetic Ctrl+C
+            # capture and Ctrl+V paste. Sending the VK fires the physical key.
+            ch = part.upper()
+            if "A" <= ch <= "Z" or "0" <= ch <= "9":
+                key_vk = ord(ch)
+            else:
+                scan = user32.VkKeyScanW(ctypes.c_wchar(part))
+                if scan != -1:
+                    key_vk = scan & 0xFF
     if key_vk is None:
         return False
 

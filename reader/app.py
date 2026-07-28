@@ -45,6 +45,7 @@ from common import autostart, singleton, theme
 from common.config import Config
 from common.hotkey import HotkeyManager
 from common.paths import log_path
+from common import tray as tray_mod
 from common.tray import Tray
 from common.ui import call_on_ui_thread
 
@@ -95,8 +96,9 @@ class ReaderApp:
         self.tracker.start()
         self.control.start()
         self.rebind()
+        tray_mod.set_app_id("WinThings.Reader")
         self.tray = (
-            Tray(APP, "Piper Read Aloud", "A", theme.ACCENT)
+            Tray(APP, "Piper Read Aloud", "reader", theme.ACCENT)
             .add("Read selection", self.read_selection, default=True)
             .add("Stop", self.stop)
             .add("Settings", self.open_settings)
