@@ -148,9 +148,20 @@ class SettingsWindow(ctk.CTk):
         )
         self.toast.pack(fill="x", padx=theme.PAD * 2, pady=(0, theme.PAD))
 
+        # Widgets are built on first show(), not here: the reader keeps its
+        # settings window alive-but-hidden for the whole session, and building
+        # a dozen rows of sliders/dropdowns at startup is the bulk of its launch
+        # cost and idle RAM for a window most sessions never open.
+        self._built = False
+        pump(self)
+
+    def ensure_built(self):
+        """Build the rows once, lazily. Call at the top of show()."""
+        if self._built:
+            return
+        self._built = True
         self.build(self.body)
         self._loading = False
-        pump(self)
 
     # -- to override ------------------------------------------------------
     def build(self, body):

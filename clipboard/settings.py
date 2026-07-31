@@ -90,6 +90,7 @@ class ClipboardSettings(SettingsWindow):
         self.withdraw()
 
     def show(self):
+        self.ensure_built()
         self.refresh_status()
         self.deiconify()
         self.lift()

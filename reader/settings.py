@@ -29,9 +29,11 @@ class ReaderSettings(SettingsWindow):
     def __init__(self, config, controller):
         self.controller = controller
         self.voice_menu = None
+        self._ticking = False
         super().__init__(config, on_change=controller.on_config_change)
         self.protocol("WM_DELETE_WINDOW", self.hide)
-        self._tick()
+        # The rows and the 1s status tick start on first show() (ensure_built /
+        # _start_tick), so a session that never opens settings pays for neither.
         # Note: whether we start hidden is the caller's call. customtkinter's
         # CTk.mainloop() only deiconifies a window that was never withdrawn, so
         # withdraw()ing here would make an --settings launch come up invisible.
@@ -61,13 +63,20 @@ class ReaderSettings(SettingsWindow):
 
     # -- show / hide ------------------------------------------------------
     def show(self):
+        self.ensure_built()
         self.refresh_voices()
         self.deiconify()
         self.lift()
         self.focus_force()
+        self._start_tick()
 
     def hide(self):
-        self.withdraw()
+        self.withdraw()  # _tick sees it's no longer viewable and stops itself
+
+    def _start_tick(self):
+        if not self._ticking:
+            self._ticking = True
+            self._tick()
 
     def refresh_voices(self):
         """Re-scan on show so dropping a voice in doesn't need a restart."""
@@ -80,8 +89,13 @@ class ReaderSettings(SettingsWindow):
 
     # -- live status ------------------------------------------------------
     def _tick(self):
-        text, color = self.controller.status()
-        self.set_status(text, color)
+        # Only runs while the window is visible; hide() lets it lapse and show()
+        # restarts it, so there is no 1-second wakeup during the long stretches
+        # the settings window sits closed.
+        if not self.winfo_viewable():
+            self._ticking = False
+            return
+        self.set_status(*self.controller.status())
         self.after(1000, self._tick)
 
 
