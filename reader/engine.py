@@ -259,78 +259,100 @@ class Engine:
 
     # -- workers ----------------------------------------------------------
     def _stream_piper(self, text, exe, info, ls, pause, volume):
+        """One piper process PER LINE, streamed back-to-back into the player.
+
+        Piper's neural state leaks across lines within a single process: feeding
+        it several utterances at once destabilises later ones into garbled "bla
+        bla" noise, while the same lines each rendered by a fresh process come
+        out clean (verified by transcribing the audio). So each line gets its
+        own invocation. Piper synthesises several times faster than real time, so
+        the next line is ready well before the current one finishes playing and
+        the seam is inaudible; the callback player zero-fills any gap as silence.
+        """
         noise_scale, noise_w = self._noise()
-        proc = subprocess.Popen(
-            piper_command(exe, info, ls, pause,
-                          noise_scale=noise_scale, noise_w=noise_w),
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            cwd=os.path.dirname(exe) or None, creationflags=_NO_WINDOW,
-        )
-        with self._lock:
-            self._proc = proc
+        lines = [ln for ln in text.split("\n") if ln.strip()]
+        state = {"proc": None, "idx": 0}
         errors = []
-        threading.Thread(target=_drain, args=(proc.stderr, errors), daemon=True).start()
-        # Feed on a separate thread: piper's stdin pipe is small, so a long
-        # selection would block us before we ever start reading stdout.
-        threading.Thread(target=_feed, args=(proc, text), daemon=True).start()
+
+        def read(n):
+            while not self._stop.is_set():
+                proc = state["proc"]
+                if proc is None:
+                    if state["idx"] >= len(lines):
+                        return b""
+                    line = lines[state["idx"]]
+                    state["idx"] += 1
+                    proc = subprocess.Popen(
+                        piper_command(exe, info, ls, pause,
+                                      noise_scale=noise_scale, noise_w=noise_w),
+                        stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE, cwd=os.path.dirname(exe) or None,
+                        creationflags=_NO_WINDOW,
+                    )
+                    state["proc"] = proc
+                    with self._lock:
+                        self._proc = proc  # so stop() kills the current line
+                    threading.Thread(target=_drain, args=(proc.stderr, errors),
+                                     daemon=True).start()
+                    threading.Thread(target=_feed, args=(proc, line),
+                                     daemon=True).start()
+                data = proc.stdout.read(n)
+                if data:
+                    return data
+                _reap(proc)
+                state["proc"] = None
+            return b""
 
         try:
-            self._pump(proc.stdout.read, info["rate"], volume)
+            self._pump(read, info["rate"], volume)
         finally:
-            _reap(proc)
-        if proc.returncode not in (0, None) and not self._stop.is_set():
-            message = (b"".join(errors).decode("utf-8", "replace").strip()
-                       or f"piper exited with {proc.returncode}")
-            self._emit("error", message)
-            return message
+            if state["proc"] is not None:
+                _reap(state["proc"])
         return None
 
     def _synth_then_play(self, text, exe, info, ls, pause, volume, on_ready, on_done):
-        import tempfile
-
-        fd, wav_path = tempfile.mkstemp(suffix=".wav", prefix="piper-read-")
-        os.close(fd)
+        """Reading-mode: render the whole selection to PCM up front (the overlay
+        needs the total duration), then play. Rendered one piper process per line
+        for the same reason as _stream_piper — a single invocation over several
+        lines garbles later ones."""
         noise_scale, noise_w = self._noise()
+        rate = info["rate"]
         try:
-            proc = subprocess.Popen(
-                piper_command(exe, info, ls, pause, out_file=wav_path,
-                              noise_scale=noise_scale, noise_w=noise_w),
-                stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE, cwd=os.path.dirname(exe) or None,
-                creationflags=_NO_WINDOW,
-            )
-            with self._lock:
-                self._proc = proc
+            pcm = bytearray()
             errors = []
-            threading.Thread(target=_drain, args=(proc.stderr, errors), daemon=True).start()
-            try:
-                proc.stdin.write((text + "\n").encode("utf-8"))
-                proc.stdin.close()
-            except OSError:
-                pass
-            proc.wait()
+            for line in (ln for ln in text.split("\n") if ln.strip()):
+                if self._stop.is_set():
+                    return None
+                proc = subprocess.Popen(
+                    piper_command(exe, info, ls, pause, noise_scale=noise_scale,
+                                  noise_w=noise_w),
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE, cwd=os.path.dirname(exe) or None,
+                    creationflags=_NO_WINDOW,
+                )
+                with self._lock:
+                    self._proc = proc
+                threading.Thread(target=_drain, args=(proc.stderr, errors),
+                                 daemon=True).start()
+                out, _ = proc.communicate((line + "\n").encode("utf-8"))
+                pcm += out
             if self._stop.is_set():
                 return None
-            if proc.returncode != 0 or not os.path.getsize(wav_path):
+            if not pcm:
                 message = (b"".join(errors).decode("utf-8", "replace").strip()
                            or "synthesis failed")
                 self._emit("error", message)
                 return message
 
-            with wave.open(wav_path, "rb") as wf:
-                rate = wf.getframerate()
-                duration = wf.getnframes() / float(rate or 1)
-                # Tell the overlay only once the device is actually running, so
-                # its word clock isn't offset by the stream-open latency.
-                self._pump(lambda n: wf.readframes(n // 2), rate, volume,
-                           on_start=(lambda: on_ready(duration)) if on_ready else None)
+            duration = len(pcm) / 2 / float(rate or 1)
+            reader = _bytes_reader(bytes(pcm))
+            # Tell the overlay only once the device is actually running, so its
+            # word clock isn't offset by the stream-open latency.
+            self._pump(reader, rate, volume,
+                       on_start=(lambda: on_ready(duration)) if on_ready else None)
         finally:
             if on_done:
                 on_done()
-            try:
-                os.unlink(wav_path)
-            except OSError:
-                pass
         return None
 
     def _pump(self, read, rate, volume, on_start=None):
@@ -433,6 +455,20 @@ def _feed(proc, text):
         proc.stdin.close()
     except (OSError, ValueError):
         pass  # piper was killed mid-write; the stop path already handled it
+
+
+def _bytes_reader(data):
+    """A read(n) over an in-memory PCM buffer, so _pump can play a pre-rendered
+    clip the same way it plays a live stream."""
+    pos = {"i": 0}
+
+    def read(n):
+        i = pos["i"]
+        chunk = data[i:i + n]
+        pos["i"] = i + n
+        return chunk
+
+    return read
 
 
 def _drain(pipe, sink, cap=8192):

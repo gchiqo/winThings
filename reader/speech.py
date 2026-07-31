@@ -226,6 +226,19 @@ def break_long(s, max_len):
     return out
 
 
+# Em / en / figure dash and horizontal bar used as a clause separator. Piper
+# doesn't treat these as a break, so a sentence like "... com — I'll ..." stays
+# one long utterance; splitting here turns it into short chunks the engine then
+# synthesises separately (one piper process each), which is what stops the
+# garble (verified by transcribing the output).
+_CLAUSE_DASH_RE = re.compile(r"\s*[‒–—―]+\s*")
+
+
+def split_clauses(sentence):
+    parts = _CLAUSE_DASH_RE.split(sentence)
+    return [p.strip() for p in parts if p.strip()] or [sentence]
+
+
 def prepare_text(raw):
     """Split raw text into bounded, sentence-sized chunks, clean each, and
     return them newline-joined (one Piper utterance per line)."""
@@ -235,10 +248,11 @@ def prepare_text(raw):
         if not block:
             continue
         for sent in split_sentences(block):
-            for chunk in break_long(sent, MAX_CHUNK):
-                spoken = clean_for_speech(chunk)
-                if spoken:
-                    lines.append(spoken)
+            for clause in split_clauses(sent):
+                for chunk in break_long(clause, MAX_CHUNK):
+                    spoken = clean_for_speech(chunk)
+                    if spoken:
+                        lines.append(spoken)
     return "\n".join(lines)
 
 
