@@ -150,6 +150,24 @@ class Engine:
         return (self._cfg_num("noise_scale", DEFAULT_NOISE_SCALE, 0.0, 1.5),
                 self._cfg_num("noise_w", DEFAULT_NOISE_W, 0.0, 1.5))
 
+    def _georgian_voice_id(self, voices):
+        """The configured Georgian voice, or the first ka_ voice available."""
+        configured = self._cfg("voice_georgian", "")
+        if configured and configured in voices:
+            return configured
+        return next((v for v in voices
+                     if v.startswith("ka_") or v.startswith("ka-")), None)
+
+    def _pick_voice_info(self, line, voices, default_info):
+        """Per-line voice: Georgian text -> the Georgian voice, else the default.
+        Decided per line so a mixed selection reads each line in the right voice."""
+        if self.config is None or not self.config.get("auto_language", True):
+            return default_info
+        if speech.detect_script(line) != "ka":
+            return default_info
+        vid = self._georgian_voice_id(voices)
+        return voices.get(vid, default_info) if vid else default_info
+
     def _settings(self, voice=None, speed=None, volume=None, pause=None):
         if self.config is not None:
             voice = voice or self.config["voice"]
@@ -271,6 +289,7 @@ class Engine:
         """
         noise_scale, noise_w = self._noise()
         lines = [ln for ln in text.split("\n") if ln.strip()]
+        voices = self.voices()  # snapshot once, not per line
         state = {"proc": None, "idx": 0}
         errors = []
 
@@ -282,8 +301,9 @@ class Engine:
                         return b""
                     line = lines[state["idx"]]
                     state["idx"] += 1
+                    line_info = self._pick_voice_info(line, voices, info)
                     proc = subprocess.Popen(
-                        piper_command(exe, info, ls, pause,
+                        piper_command(exe, line_info, ls, pause,
                                       noise_scale=noise_scale, noise_w=noise_w),
                         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE, cwd=os.path.dirname(exe) or None,
@@ -317,14 +337,16 @@ class Engine:
         lines garbles later ones."""
         noise_scale, noise_w = self._noise()
         rate = info["rate"]
+        voices = self.voices()
         try:
             pcm = bytearray()
             errors = []
             for line in (ln for ln in text.split("\n") if ln.strip()):
                 if self._stop.is_set():
                     return None
+                line_info = self._pick_voice_info(line, voices, info)
                 proc = subprocess.Popen(
-                    piper_command(exe, info, ls, pause, noise_scale=noise_scale,
+                    piper_command(exe, line_info, ls, pause, noise_scale=noise_scale,
                                   noise_w=noise_w),
                     stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE, cwd=os.path.dirname(exe) or None,

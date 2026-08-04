@@ -16,6 +16,8 @@ from common.hotkey import pretty
 from common.ui import SettingsWindow
 
 HINT_VOICE = "Piper .onnx voices found in reader\\voices"
+HINT_GEORGIAN = "Voice used for Georgian text when auto-detect is on"
+HINT_AUTOLANG = "Detect Georgian per line and read it with the Georgian voice"
 HINT_SPEED = "Multiplier; Piper's length_scale is the inverse of this"
 HINT_HOTKEY = "Press once to read the selection, again to stop"
 HINT_READING = "Fullscreen overlay that highlights each word as it is read"
@@ -29,6 +31,7 @@ class ReaderSettings(SettingsWindow):
     def __init__(self, config, controller):
         self.controller = controller
         self.voice_menu = None
+        self.georgian_menu = None
         self._ticking = False
         super().__init__(config, on_change=controller.on_config_change)
         self.protocol("WM_DELETE_WINDOW", self.hide)
@@ -43,6 +46,12 @@ class ReaderSettings(SettingsWindow):
         self.add_section("Voice")
         self.voice_menu = self.add_dropdown(
             "Voice", "voice", self.controller.voice_ids(), hint=HINT_VOICE)
+        georgian = self.controller.georgian_voice_ids()
+        if georgian:
+            self.georgian_menu = self.add_dropdown(
+                "Georgian voice", "voice_georgian", georgian, hint=HINT_GEORGIAN)
+            self.add_switch("Auto-detect Georgian", "auto_language",
+                            hint=HINT_AUTOLANG)
         self.add_slider("Speed", "speed", 0.5, 5.0, 0.1, "{:.1f}x", hint=HINT_SPEED)
         self.add_slider("Volume", "volume", 0.0, 1.5, 0.05, "{:.0%}")
         self.add_slider("Pause between sentences", "sentence_silence",
@@ -86,6 +95,11 @@ class ReaderSettings(SettingsWindow):
         self.voice_menu.configure(values=ids or ["(none)"])
         current = self.config_obj["voice"]
         self.voice_menu.set(current if current in ids else (ids[0] if ids else "(none)"))
+        if self.georgian_menu is not None:
+            ka = self.controller.georgian_voice_ids()
+            self.georgian_menu.configure(values=ka or ["(none)"])
+            cur = self.config_obj["voice_georgian"]
+            self.georgian_menu.set(cur if cur in ka else (ka[0] if ka else "(none)"))
 
     # -- live status ------------------------------------------------------
     def _tick(self):

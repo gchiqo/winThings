@@ -53,8 +53,14 @@ APP = "reader"
 
 log = logging.getLogger(APP)
 
+
+def _is_georgian_voice(vid):
+    return vid.startswith("ka_") or vid.startswith("ka-")
+
 DEFAULTS = {
-    "voice": "",                 # "" -> PREFERRED_VOICE, else first found
+    "voice": "",                 # default/English voice; "" -> preferred, else first
+    "voice_georgian": "",        # voice for Georgian text; "" -> first ka_ voice
+    "auto_language": True,       # detect Georgian per line and switch voice
     "speed": 1.0,                # multiplier; piper wants its inverse
     "volume": 1.0,               # applied to the PCM ourselves
     "sentence_silence": 0.2,     # seconds of silence between sentences
@@ -134,7 +140,11 @@ class ReaderApp:
 
     # -- config -----------------------------------------------------------
     def voice_ids(self):
-        return list(self.engine.voices())
+        """Non-Georgian voices, for the default/English picker."""
+        return [v for v in self.engine.voices() if not _is_georgian_voice(v)]
+
+    def georgian_voice_ids(self):
+        return [v for v in self.engine.voices() if _is_georgian_voice(v)]
 
     def rebind(self):
         """(Re)register the global hotkey. Suppressed so the focused app doesn't

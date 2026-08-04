@@ -291,6 +291,31 @@ def prepare_text(raw):
 
 
 # ---------------------------------------------------------------------------
+# Script detection — pick the voice that matches the text
+# ---------------------------------------------------------------------------
+
+# Georgian: Mkhedruli / Asomtavruli / Mtavruli plus the Extended block.
+_GEORGIAN_RE = re.compile(r"[Ⴀ-ჿᲐ-Ჿ]")
+_LATIN_RE = re.compile(r"[A-Za-z]")
+
+
+def detect_script(text):
+    """'ka' when the text is written mostly in Georgian, else None.
+
+    Counts letters rather than any-match so a stray Latin word inside a Georgian
+    sentence (or vice versa) doesn't flip the choice; the reader decides this per
+    line, so a mixed selection still gets each line read by the right voice.
+    """
+    ka = len(_GEORGIAN_RE.findall(text))
+    # Strict majority: a lone Georgian name in an English line stays on the
+    # English voice (which mangles one word), rather than the Georgian voice
+    # (which would mangle all the English).
+    if ka and ka > len(_LATIN_RE.findall(text)):
+        return "ka"
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Voices
 # ---------------------------------------------------------------------------
 
