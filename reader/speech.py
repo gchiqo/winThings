@@ -226,33 +226,67 @@ def break_long(s, max_len):
     return out
 
 
-# Em / en / figure dash and horizontal bar used as a clause separator. Piper
-# doesn't treat these as a break, so a sentence like "... com — I'll ..." stays
-# one long utterance; splitting here turns it into short chunks the engine then
-# synthesises separately (one piper process each), which is what stops the
-# garble (verified by transcribing the output).
-_CLAUSE_DASH_RE = re.compile(r"\s*[‒–—―]+\s*")
+# Clause separators that Piper doesn't treat as a break, so a whole comma- or
+# dash-joined sentence goes to it as one long utterance. Dense utterances (two
+# emails, several acronyms) destabilise the model into garbled "bla bla" noise,
+# even when short; splitting here into clauses that the engine then synthesises
+# separately (one piper process each) is what stops it (verified by transcribing
+# the output). A comma only splits when followed by whitespace, so numbers like
+# 1,000 stay intact; em/en/figure dash and horizontal bar always split.
+_CLAUSE_SEP_RE = re.compile(r"\s*[‒–—―]+\s*|,\s+")
 
 
 def split_clauses(sentence):
-    parts = _CLAUSE_DASH_RE.split(sentence)
+    parts = _CLAUSE_SEP_RE.split(sentence)
     return [p.strip() for p in parts if p.strip()] or [sentence]
+
+
+# What garbles Piper is a dense utterance, not merely a long one, so after
+# splitting on every clause boundary we greedily repack adjacent clauses back
+# into utterances up to this many characters. Ordinary comma-rich prose ends up
+# as one or two natural utterances (rejoined with commas, so the pauses stay),
+# while genuinely dense runs — two emails, several acronyms — are long enough per
+# clause that they never repack and stay separate. Below the length where a
+# plain sentence is safe (a 140-char ordinary sentence reads fine).
+PACK_LIMIT = 90
+
+
+def pack_clauses(clauses):
+    out, cur = [], ""
+    for clause in clauses:
+        if not cur:
+            cur = clause
+        elif len(cur) + 2 + len(clause) <= PACK_LIMIT:
+            cur = cur + ", " + clause
+        else:
+            out.append(cur)
+            cur = clause
+    if cur:
+        out.append(cur)
+    return out
 
 
 def prepare_text(raw):
     """Split raw text into bounded, sentence-sized chunks, clean each, and
-    return them newline-joined (one Piper utterance per line)."""
+    return them newline-joined (one Piper utterance per line).
+
+    Clauses are cleaned before packing so the pack limit sees the length Piper
+    actually gets — an email expands from info@x.ge to "info at x dot ge", and
+    packing on the raw length would merge two of them back into the dense
+    utterance that garbles.
+    """
     lines = []
     for block in re.split(r"\n+", raw):
         block = block.strip()
         if not block:
             continue
         for sent in split_sentences(block):
-            for clause in split_clauses(sent):
-                for chunk in break_long(clause, MAX_CHUNK):
-                    spoken = clean_for_speech(chunk)
-                    if spoken:
-                        lines.append(spoken)
+            clauses = [c for c in (clean_for_speech(cl)
+                                   for cl in split_clauses(sent)) if c]
+            for utterance in pack_clauses(clauses):
+                for chunk in break_long(utterance, MAX_CHUNK):
+                    if chunk:
+                        lines.append(chunk)
     return "\n".join(lines)
 
 
