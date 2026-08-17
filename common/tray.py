@@ -69,7 +69,25 @@ def _draw_clipboard(img, color):
     d.ellipse([116, 132, 168, 184], outline=WHITE, width=4)
 
 
-_ART = {"reader": _draw_reader, "clipboard": _draw_clipboard}
+def _draw_transcriber(img, color):
+    """A sound waveform turning into text lines — 'audio to text'."""
+    d = ImageDraw.Draw(img)
+    acc = _hex(color) + (255,)
+    cy = _HI_RES // 2
+    # waveform bars on the left
+    heights = (28, 54, 78, 44, 62, 30)
+    x = 48
+    for h in heights:
+        d.rounded_rectangle([x, cy - h, x + 10, cy + h], radius=5, fill=WHITE)
+        x += 18
+    # text lines on the right
+    for i, w in enumerate((70, 54, 62)):
+        y = cy - 30 + i * 30
+        d.rounded_rectangle([166, y, 166 + w, y + 12], radius=6, fill=WHITE)
+
+
+_ART = {"reader": _draw_reader, "clipboard": _draw_clipboard,
+        "transcriber": _draw_transcriber}
 
 
 def _draw_letter(img, glyph):

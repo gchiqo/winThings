@@ -18,6 +18,7 @@ import customtkinter as ctk
 
 from . import theme
 from .hotkey import capture as capture_hotkey, is_valid, normalize, pretty
+from .textinput import fix_unicode_input
 
 _ui_queue = queue.Queue()
 
@@ -237,6 +238,7 @@ class SettingsWindow(ctk.CTk):
         )
         entry.insert(0, str(self.config_obj[key]))
         entry.grid(row=0, column=1, sticky="ew")
+        fix_unicode_input(entry)  # non-ANSI (e.g. Georgian) typing survives
 
         def commit(_event=None):
             try:

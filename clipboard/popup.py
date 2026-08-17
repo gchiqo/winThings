@@ -19,6 +19,7 @@ import customtkinter as ctk
 from PIL import Image, ImageTk
 
 from common import theme
+from common.textinput import fix_unicode_input
 
 ROW_HEIGHT = 30
 THUMB_MAX = 22
@@ -64,6 +65,7 @@ class Popup(ctk.CTkToplevel):
             text_color=theme.FG, height=36, font=theme.font(ctk),
         )
         self.search.pack(fill="x", padx=theme.PAD, pady=(theme.PAD, theme.PAD_SMALL))
+        fix_unicode_input(self.search)  # so Georgian etc. isn't lost to '?'
 
         holder = ctk.CTkFrame(self, fg_color=theme.BG_ELEVATED, corner_radius=theme.RADIUS)
         holder.pack(fill="both", expand=True, padx=theme.PAD, pady=0)

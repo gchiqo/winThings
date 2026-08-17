@@ -23,6 +23,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 APPS = {
     "clipboard": "Clipboard history with search",
     "reader": "Read selected text aloud",
+    "transcriber": "Audio-to-text (Whisper)",
 }
 
 
