@@ -134,8 +134,11 @@ clipboard event and cannot see elevated processes, so treat it as convenience,
 not a security boundary. Auto-paste cannot focus elevated windows. Search covers
 the first 4096 characters of an entry.
 
-**Reader.** Selection capture works by synthesising `Ctrl+C` and restoring the
+**Reader.** The selection is read through UI Automation where the app supports it
+(browsers, Notepad, VS Code, Windows Terminal — see
+[reader/README.md](reader/README.md#how-the-selection-is-read)), with no clipboard
+involved. Elsewhere it falls back to synthesising `Ctrl+C` and restoring the
 previous clipboard afterwards; that restore is **text-only**, so an image or file
-list on the clipboard is lost when the hotkey fires. Reading mode has to fully
+list on the clipboard is lost when the fallback runs. Reading mode has to fully
 synthesise before it can start highlighting, because Piper emits no word-level
 timing.

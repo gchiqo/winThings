@@ -13,3 +13,4 @@ psutil>=5.9           # process lookup for winthings.py --stop / exclude-list
 # Reader
 sounddevice>=0.4.6    # in-process PCM playback (avoids needing ffmpeg)
 numpy>=1.24           # PCM buffer handling for sounddevice
+comtypes>=1.4         # UI Automation selection capture (no clipboard)

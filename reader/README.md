@@ -90,7 +90,54 @@ Set the hotkey in Settings → Shortcut: click the field and press the combinati
 
 The hotkey is registered **suppressed**, meaning the focused app never sees it. That
 is deliberate: some editors bind `Ctrl+Shift+A` themselves, and if that command
-changed the selection first, the `Ctrl+C` we synthesize would copy the wrong thing.
+changed the selection first, we would read the wrong thing.
+
+---
+
+## How the selection is read
+
+Two routes, tried in order (`selection.py`):
+
+1. **UI Automation.** The focused element's `TextPattern` is asked for its selection
+   ranges. Nothing touches the clipboard, no keys are sent, and clipboard-history
+   tools (CopyQ, Win+V) see nothing. Warm reads take 2–15 ms.
+2. **Synthetic `Ctrl+C`**, with the clipboard snapshotted first and put back
+   afterwards — used only when UIA returns nothing (element has no TextPattern,
+   empty selection, timeout, error). Typically 100–150 ms.
+
+UIA runs on its own thread with UIA's connection/transaction timeouts at 150 ms and
+a 250 ms hard deadline, so a hung app costs a fallback, never a frozen hotkey.
+
+Chromium (Chrome, Edge, VS Code and other Electron apps) and Firefox build their
+accessibility tree lazily, on the first UIA request. So the first read from a window
+gets a short retry budget (150 ms) for those; later reads from the same window
+don't, so "nothing selected" stays cheap.
+
+Every read logs which route answered, to `%APPDATA%\WinThings\reader\reader.log`
+(the text itself is never logged):
+
+```
+selection via uia (ok) app=chrome.exe chars=166 3ms
+selection via uia (ok after 1 retry) app=msedge.exe chars=166 40ms
+selection via clipboard (uia: no-textpattern) app=someapp.exe chars=42 120ms
+```
+
+`ok+1up` means the TextPattern was found on an ancestor of the focused element (the
+Edge PDF viewer does this). Set the environment variable `WINTHINGS_NO_UIA=1` to
+force the `Ctrl+C` route, e.g. to compare behaviour in an app.
+
+Measured on this machine (Windows 11, October 2026), selecting text and reading it:
+
+| App | Route | Notes |
+| --- | --- | --- |
+| Notepad | UIA | 3–15 ms |
+| Chrome | UIA | First read in a fresh window needs one retry (~40 ms) |
+| Edge | UIA | Same as Chrome |
+| Firefox | UIA | One run returned an empty selection on a new page's first read, fine on retry |
+| Edge PDF viewer | UIA | TextPattern sits one level up (`ok+1up`); tree takes ~130 ms to appear on first read. `Ctrl+A` selects nothing in the viewer — drag to select |
+| VS Code (editor) | UIA | Its first read after VS Code started fell back to `Ctrl+C` once, before the retry existed; UIA every time since |
+| Windows Terminal | UIA | Select-all includes the buffer's trailing padding; the speech cleanup collapses it |
+| Word | — | Not installed here, untested. Word implements TextPattern, so UIA is expected |
 
 ---
 
@@ -150,7 +197,7 @@ and every result is identical:
 
 | Linux | Windows |
 | --- | --- |
-| X11 PRIMARY selection | synthetic `Ctrl+C` + clipboard snapshot/restore (`selection.py`) |
+| X11 PRIMARY selection | UI Automation `TextPattern`, else synthetic `Ctrl+C` + clipboard restore (`selection.py`) |
 | `gsettings` custom keybinding | `RegisterHotKey` via `common.winhotkey` (no keyboard hook) |
 | `pw-play` / `aplay` / `ffplay` pipe | `sounddevice` streaming, in-process (`engine.py`) |
 | process group + `killpg` + PID file | worker thread + `threading.Event` (`engine.py`) |
@@ -168,10 +215,11 @@ original. Turn it on with the Reading mode switch.
 
 These are real limits, not oversights:
 
-- **Only text is restored to the clipboard.** Capturing a selection means pressing
-  `Ctrl+C` in the focused app, which destroys whatever was on the clipboard. We put
-  back the previous *text*; if the clipboard held an image or files, it is already
-  gone by the time we see it and the captured text is left there instead.
+- **The `Ctrl+C` fallback only restores text.** When UIA can't read the selection,
+  capturing it means pressing `Ctrl+C` in the focused app, which destroys whatever
+  was on the clipboard. We put back the previous *text*; if the clipboard held an
+  image or files, it is already gone by the time we see it and the captured text is
+  left there instead. The UIA route never touches the clipboard.
 - **Nothing gets read from an elevated window.** A hotkey registered by a
   normal-integrity process does not fire while an admin window has focus, and the
   synthetic `Ctrl+C` would not reach it either. Run the app elevated too if you

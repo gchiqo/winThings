@@ -5,7 +5,7 @@ Ctrl+Shift+A) to read whatever is selected in any app; press it again to stop.
 The text-cleaning and chunking that made Piper behave (see speech.py) is carried
 over unchanged; everything OS-facing is new:
 
-  selection   X11 PRIMARY  ->  synthetic Ctrl+C + clipboard restore
+  selection   X11 PRIMARY  ->  UI Automation TextPattern, else Ctrl+C + restore
   hotkey      gsettings    ->  common.hotkey / the `keyboard` low-level hook
   playback    pw-play pipe ->  sounddevice, in-process (no ffmpeg on this box)
   stop        killpg       ->  worker thread + threading.Event (see engine.py)
@@ -99,6 +99,7 @@ class ReaderApp:
 
     # -- lifecycle --------------------------------------------------------
     def start(self, open_settings=False):
+        selection.warm_up()  # comtypes + UIA object, off the hotkey path
         self.tracker.start()
         self.control.start()
         self.rebind()
