@@ -1,7 +1,9 @@
 # Piper Read Aloud — Windows
 
 Select text anywhere in Windows, press `Ctrl+Shift+A`, and it is read aloud with a
-Piper neural voice. Press the hotkey again to stop.
+neural voice — [Piper](#installing-piperexe-and-voices) or
+[Kokoro](#3-kokoro-optional-second-engine--readerkokoro), picked under Settings →
+Engine. Press the hotkey again to stop.
 
 This is a port of a working Linux/GNOME tool (`read-aloud.py`, not in this repo).
 The text-cleaning and sentence-chunking pipeline is carried over verbatim — it was
@@ -79,6 +81,37 @@ alphabetically. The sample rate comes from `audio.sample_rate` in the `.onnx.jso
 Voice files are large. If you keep them elsewhere, set the `voices_dir` config key to
 that folder instead of copying them in.
 
+### 3. Kokoro (optional second engine) → `reader\kokoro\`
+
+[Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) is a second engine, chosen
+under Settings → **Engine**. Its English voices sound noticeably more natural than
+Piper's; it has **no Georgian voice**, so Georgian lines keep going to the Piper
+Georgian voice (see below). It runs inside the reader process through the
+`kokoro-onnx` package — ONNX Runtime, no PyTorch, already in requirements.txt — and
+needs two files from the kokoro-onnx
+[`model-files-v1.0` release](https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.0):
+
+```
+reader\kokoro\kokoro-v1.0.onnx     325 MB, the model
+reader\kokoro\voices-v1.0.bin       28 MB, all 54 voices
+```
+
+From the repo root (curl ships with Windows):
+
+```
+curl -L --create-dirs -o reader\kokoro\kokoro-v1.0.onnx https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx
+curl -L -o reader\kokoro\voices-v1.0.bin https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
+```
+
+Until both files are there, the Engine menu lists **Kokoro (not installed)** with
+these instructions under it and won't switch to it; nothing else changes. Once they
+are, reopen Settings — no restart needed.
+
+Voice ids encode language and gender: `af_heart` is **a**merican English,
+**f**emale; `bm_george` is **b**ritish English, **m**ale. Other first letters are
+Spanish, French, Hindi, Italian, Japanese, Portuguese and Mandarin. The default is
+`af_heart`.
+
 ---
 
 ## Hotkeys
@@ -155,10 +188,14 @@ hand if you prefer; unknown keys are preserved and out-of-range values are clamp
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `voice` | `""` | Voice id (filename without `.onnx`). Blank = `en_US-ryan-high`, else first found |
-| `speed` | `1.0` | Speed multiplier, 0.5–5.0. Piper's `--length_scale` is its inverse |
+| `engine` | `"piper"` | `piper` or `kokoro` |
+| `voice` | `""` | Piper voice id (filename without `.onnx`). Blank = `en_US-ryan-high`, else first found |
+| `kokoro_voice` | `""` | Kokoro voice id. Blank = `af_heart`, else first in `voices-v1.0.bin` |
+| `voice_georgian` | `""` | Piper voice for Georgian lines, in both engines. Blank = first `ka_` voice |
+| `auto_language` | `true` | Detect Georgian per line and switch to `voice_georgian` |
+| `speed` | `1.0` | Speed multiplier, 0.5–5.0. Piper's `--length_scale` is its inverse; Kokoro caps it at 2.0 |
 | `volume` | `1.0` | 0.0–1.5, applied to the PCM samples before playback |
-| `sentence_silence` | `0.2` | Seconds of silence between sentences (Piper's `--sentence_silence`) |
+| `sentence_silence` | `0.2` | Seconds of silence between sentences (Piper's `--sentence_silence`; added by hand for Kokoro) |
 | `reading_mode` | `false` | Fullscreen overlay that highlights each word as it is read |
 | `hotkey` | `"ctrl+shift+a"` | Global shortcut |
 | `autostart` | `false` | Register under `HKCU\...\CurrentVersion\Run` |
@@ -180,8 +217,11 @@ app.py --stop               stop any current playback
 app.py --read               read the current selection
 app.py --text "..."         read the given text
 app.py --voice ID --speed 1.2 --text "..."
-app.py --list-voices
+app.py --list-voices        every Piper and Kokoro voice, prefixed with its engine
 ```
+
+`--text` / `--read` use the engine set in the config; `--voice` only applies if it
+names a voice of that engine.
 
 A second bare `app.py` while one is already running opens the first one's settings
 window instead of starting a duplicate tray icon and hotkey.
@@ -259,8 +299,25 @@ These are real limits, not oversights:
   alignment, so word timings are estimated from the total audio duration — which
   means the overlay waits for synthesis to finish before it starts speaking. Normal
   (non-overlay) reading streams and starts as soon as the first audio arrives.
+  Same for Kokoro: the overlay gets the total duration once every line is rendered.
 - **Word highlighting is an estimate**, weighted by word length and trailing
   punctuation. Usually within ~150 ms; it drifts on text with unusual pronunciation.
+  (kokoro-onnx can report per-phoneme timings, `create_timed()`, which could make
+  Kokoro's highlighting exact; not used yet.)
+- **Kokoro lives inside the reader process.** The model loads in ~1 s (in the
+  background, at start and when you switch to it) and holds ~400–470 MB of RAM while
+  Kokoro is the selected engine; switching back to Piper frees it. On this machine's
+  CPU a sentence takes 0.25–0.55 s to synthesise, about 5× faster than real time, so
+  streaming never waits after the first line.
+- **Kokoro's speed range is 0.5–2.0×.** The Speed slider goes to 5× for Piper;
+  Kokoro is capped at 2×.
+- **Stopping Kokoro mid-sentence** silences the audio at once, like Piper. The line
+  being synthesised at that moment can't be interrupted (it is a single ONNX run),
+  so the worker finishes it in the background — `stop()` measured ~100 ms.
+- **Kokoro has no Georgian.** In Kokoro mode, Georgian lines (with Auto-detect
+  Georgian on) are read by the Piper Georgian voice and resampled from 22.05 to
+  24 kHz into the same stream; without Piper installed, Kokoro attempts them itself,
+  badly.
 - **Bluetooth audio adds latency.** Opening the output stream on a BT headset
   measured ~0.8 s on the original dev machine, so the first word lags. Wired/USB devices open in
   a few tens of milliseconds.

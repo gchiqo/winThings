@@ -3,22 +3,39 @@
 Same feature set as the GTK version: voice picker, speed/volume/pause sliders,
 the shortcut, Test / Read selection / Stop, and the live status dot that told
 you at a glance whether the hotkey was actually bound. The layout comes from
-common.ui.SettingsWindow so it matches the other WinThings apps.
+common.ui.SettingsWindow so it matches the other WinThings apps. On top of
+that: the Engine picker (Piper / Kokoro), which swaps the voice list.
 
 The window is created once at startup and hidden rather than destroyed on close:
 Tk insists on owning the main thread, and this app also runs a tray icon and a
 keyboard hook, so there is exactly one root and it lives for the process.
 """
 
+import customtkinter as ctk
+
 import bootstrap  # noqa: F401
+import kokoro_tts
+import speech
 from common import theme
 from common.hotkey import pretty
 from common.ui import SettingsWindow
 
-HINT_VOICE = "Piper .onnx voices found in reader\\voices"
-HINT_GEORGIAN = "Voice used for Georgian text when auto-detect is on"
+ENGINE_LABELS = {"piper": "Piper", "kokoro": "Kokoro"}
+KOKORO_UNAVAILABLE = "Kokoro (not installed)"
+VOICE_KEYS = {"piper": "voice", "kokoro": "kokoro_voice"}
+
+HINT_ENGINE = ("Piper: quick, and has the Georgian voice. Kokoro: more natural "
+               "English; Georgian lines still go to Piper")
+HINT_VOICE = {
+    "piper": "Piper .onnx voices found in reader\\voices",
+    "kokoro": ("From reader\\kokoro\\voices-v1.0.bin. First letter is the language "
+               "(a = US English, b = UK English), second is f / m"),
+}
+HINT_GEORGIAN = ("Piper voice for Georgian text when auto-detect is on — in Kokoro "
+                 "mode too, since Kokoro has no Georgian")
 HINT_AUTOLANG = "Detect Georgian per line and read it with the Georgian voice"
-HINT_SPEED = "Multiplier; Piper's length_scale is the inverse of this"
+HINT_SPEED = ("Multiplier. Piper's length_scale is its inverse; Kokoro takes "
+              "0.5–2.0x and caps anything faster")
 HINT_HOTKEY = "Press once to read the selection, again to stop"
 HINT_READING = "Fullscreen overlay that highlights each word as it is read"
 
@@ -30,6 +47,7 @@ class ReaderSettings(SettingsWindow):
 
     def __init__(self, config, controller):
         self.controller = controller
+        self.engine_menu = None
         self.voice_menu = None
         self.georgian_menu = None
         self._ticking = False
@@ -44,8 +62,11 @@ class ReaderSettings(SettingsWindow):
     # -- layout -----------------------------------------------------------
     def build(self, body):
         self.add_section("Voice")
+        self.engine_menu = self._add_engine_menu()
+        name = self._engine()
         self.voice_menu = self.add_dropdown(
-            "Voice", "voice", self.controller.voice_ids(), hint=HINT_VOICE)
+            "Voice", VOICE_KEYS[name], self.controller.voice_ids(name),
+            hint=HINT_VOICE[name])
         georgian = self.controller.georgian_voice_ids()
         if georgian:
             self.georgian_menu = self.add_dropdown(
@@ -87,14 +108,53 @@ class ReaderSettings(SettingsWindow):
             self._ticking = True
             self._tick()
 
+    # -- engine -----------------------------------------------------------
+    def _engine(self):
+        return self.controller.engine.engine_name()
+
+    def _add_engine_menu(self):
+        """Engine picker. Not add_dropdown(): the menu shows labels, the config
+        stores "piper"/"kokoro", and picking a Kokoro that isn't installed must
+        be refused rather than committed."""
+        row = self._row("Engine", HINT_ENGINE)
+        menu = ctk.CTkOptionMenu(
+            row, values=list(ENGINE_LABELS.values()), command=self._engine_picked,
+            fg_color=theme.BG_ELEVATED, button_color=theme.BG_HOVER,
+            button_hover_color=theme.BG_ACTIVE, text_color=theme.FG,
+        )
+        menu.grid(row=0, column=1, sticky="ew")
+        return menu
+
+    def _engine_picked(self, label):
+        name = "kokoro" if label in ("Kokoro", KOKORO_UNAVAILABLE) else "piper"
+        problem = kokoro_tts.problem() if name == "kokoro" else None
+        if problem:
+            # The hint under the menu already carries the download instructions.
+            self.flash("Kokoro isn't installed — see below Engine", error=True)
+            self.refresh_voices()  # puts the menu back on the engine in use
+            return
+        self._commit("engine", name)
+        self.refresh_voices()
+        self.set_status(*self.controller.status())  # don't wait for the 1 s tick
+
     def refresh_voices(self):
-        """Re-scan on show so dropping a voice in doesn't need a restart."""
+        """Re-scan on show (and on an engine switch) so dropping in a voice or
+        the Kokoro files doesn't need a restart."""
         if self.voice_menu is None:
             return
-        ids = self.controller.voice_ids()
-        self.voice_menu.configure(values=ids or ["(none)"])
-        current = self.config_obj["voice"]
-        self.voice_menu.set(current if current in ids else (ids[0] if ids else "(none)"))
+        name = self._engine()
+        problem = kokoro_tts.problem()
+        kokoro_label = KOKORO_UNAVAILABLE if problem else ENGINE_LABELS["kokoro"]
+        self.engine_menu.configure(values=[ENGINE_LABELS["piper"], kokoro_label])
+        self.engine_menu.set(kokoro_label if name == "kokoro" else ENGINE_LABELS["piper"])
+        _set_hint(self.engine_menu, problem or HINT_ENGINE)
+
+        key = VOICE_KEYS[name]
+        ids = self.controller.voice_ids(name)
+        self.voice_menu.configure(values=ids or ["(none)"],
+                                  command=lambda v, k=key: self._commit(k, v))
+        self.voice_menu.set(_shown_voice(name, self.config_obj[key], ids))
+        _set_hint(self.voice_menu, HINT_VOICE[name])
         if self.georgian_menu is not None:
             ka = self.controller.georgian_voice_ids()
             self.georgian_menu.configure(values=ka or ["(none)"])
@@ -113,6 +173,24 @@ class ReaderSettings(SettingsWindow):
         self.after(1000, self._tick)
 
 
+def _set_hint(control, text):
+    """Reword the hint under a control's Row (common.ui.Row.hint_label)."""
+    label = getattr(control.master, "hint_label", None)
+    if label is not None:
+        label.configure(text=text)
+
+
+def _shown_voice(engine_name, current, ids):
+    """The voice the engine will actually use, so the menu doesn't lie."""
+    if not ids:
+        return "(none)"
+    if current in ids:
+        return current
+    if engine_name == "kokoro":
+        return kokoro_tts.pick_voice(current, ids)
+    return speech.PREFERRED_VOICE if speech.PREFERRED_VOICE in ids else ids[0]
+
+
 def status_for(controller):
     """The status line, in the same precedence order the GTK version used."""
     if controller.engine.is_speaking():
@@ -123,4 +201,6 @@ def status_for(controller):
     if not controller.hotkeys.bound("read"):
         error = controller.hotkeys.error("read") or "not bound"
         return f"Hotkey not bound ({error}) — use the Read selection button", theme.ERROR
-    return f"Ready  ·  hotkey: {pretty(controller.hotkeys.spec('read'))}", theme.OK
+    engine_label = ENGINE_LABELS[controller.engine.engine_name()]
+    return (f"Ready  ·  {engine_label}  ·  hotkey: "
+            f"{pretty(controller.hotkeys.spec('read'))}", theme.OK)

@@ -6,7 +6,7 @@ none touches Explorer, the Start menu or the taskbar.
 
 | App | What it does | Default hotkey |
 |---|---|---|
-| [reader](reader/) | Reads the selected text aloud with a Piper neural voice | `Ctrl+Shift+A` |
+| [reader](reader/) | Reads the selected text aloud with a Piper or Kokoro neural voice | `Ctrl+Shift+A` |
 | [transcriber](transcriber/) | Local speech-to-text for audio files (faster-whisper) | — |
 | [clipboard](clipboard/) | **Retired** in favour of [CopyQ](https://hluk.github.io/CopyQ/). Kept in the repo, not started by default | `Ctrl+Shift+V` |
 

@@ -12,6 +12,13 @@ the hotkey lives in the same long-running process anyway, so a job runs on a
 worker thread guarded by a threading.Event: stop() sets the event, kills piper
 and *aborts* (not drains) the audio stream, so the sound cuts immediately rather
 than finishing the sentence already handed to the device.
+
+Two engines feed that same player, picked by the `engine` config key: Piper
+(piper.exe per line, the voice's own rate, usually 22.05 kHz) and Kokoro
+(kokoro_tts.py, in-process, 24 kHz). Both get the same prepared lines from
+speech.prepare_text and are stopped the same way. Kokoro has no Georgian voice,
+so in Kokoro mode Georgian lines are still rendered by Piper and resampled into
+the 24 kHz stream.
 """
 
 import logging
@@ -20,6 +27,7 @@ import subprocess
 import threading
 import wave
 
+import kokoro_tts
 import speech
 
 log = logging.getLogger("reader.engine")
@@ -51,6 +59,8 @@ TAIL_OUT_SECONDS = 0.6
 # No console window when launched from pythonw, and no flash when launched
 # from python.exe.
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+ENGINES = ("piper", "kokoro")
 
 
 def piper_exe(override=None):
@@ -117,11 +127,19 @@ class Engine:
         self._stream = None
 
     # -- setup checks -----------------------------------------------------
+    def engine_name(self):
+        """"piper" or "kokoro", from config; anything else means piper."""
+        name = str(self._cfg("engine", "piper") or "piper").lower()
+        return name if name in ENGINES else "piper"
+
     def voices(self):
+        """Piper voices (id -> info). Kokoro's are kokoro_tts.voices()."""
         return speech.discover_voices(self._cfg("voices_dir", ""))
 
     def problem(self):
         """Human-readable reason we cannot speak right now, or None."""
+        if self.engine_name() == "kokoro":
+            return kokoro_tts.problem()
         if not os.path.exists(piper_exe(self._cfg("piper_exe", ""))):
             return "piper.exe not found — see README (reader\\piper\\)"
         if not self.voices():
@@ -218,7 +236,7 @@ class Engine:
     def speak(self, text, voice=None, speed=None, volume=None, pause=None,
               blocking=False):
         """Synthesise and play `text` (already prepared, one utterance per line)."""
-        return self._start(self._stream_piper, text, voice, speed, volume, pause,
+        return self._start("stream", text, voice, speed, volume, pause,
                            blocking=blocking, extra=())
 
     def read_aloud(self, text, on_ready=None, on_done=None, voice=None, speed=None,
@@ -229,24 +247,41 @@ class Engine:
         Piper emits no word alignment, so the overlay estimates word timings from
         the total duration — which means we have to know it up front, i.e. no
         streaming for this one path. Same trade-off the GTK overlay made."""
-        return self._start(self._synth_then_play, text, voice, speed, volume, pause,
+        return self._start("render", text, voice, speed, volume, pause,
                            blocking=blocking, extra=(on_ready, on_done))
 
-    def _start(self, target, text, voice, speed, volume, pause, blocking, extra):
+    def _start(self, kind, text, voice, speed, volume, pause, blocking, extra):
+        """kind is "stream" (play as it synthesises) or "render" (synthesise
+        everything, then play: reading mode)."""
         self.stop()
         text = (text or "").strip()
         if not text:
             return False, "nothing to read"
 
-        exe = piper_exe(self._cfg("piper_exe", ""))
-        if not os.path.exists(exe):
-            return False, "piper.exe not found — see README"
-        voice, speed, volume, pause = self._settings(voice, speed, volume, pause)
-        vid, info = self.resolve(voice)
-        if not info:
-            return False, "no voices found — see README"
+        if self.engine_name() == "kokoro":
+            problem = kokoro_tts.problem()
+            if problem:
+                return False, problem
+            _, speed, volume, pause = self._settings(None, speed, volume, pause)
+            ids = kokoro_tts.voices()
+            # An explicit voice (CLI --voice) only counts if it is a Kokoro one.
+            vid = kokoro_tts.pick_voice(
+                voice if voice in ids else self._cfg("kokoro_voice", ""), ids)
+            if not vid:
+                return False, "no voices in reader\\kokoro\\voices-v1.0.bin"
+            target = self._stream_kokoro if kind == "stream" else self._kokoro_then_play
+            args = (text, vid, speed, pause, volume) + extra
+        else:
+            exe = piper_exe(self._cfg("piper_exe", ""))
+            if not os.path.exists(exe):
+                return False, "piper.exe not found — see README"
+            voice, speed, volume, pause = self._settings(voice, speed, volume, pause)
+            vid, info = self.resolve(voice)
+            if not info:
+                return False, "no voices found — see README"
+            target = self._stream_piper if kind == "stream" else self._synth_then_play
+            args = (text, exe, info, speech.length_scale(speed), pause, volume) + extra
 
-        args = (text, exe, info, speech.length_scale(speed), pause, volume) + extra
         self._stop.clear()
         thread = threading.Thread(target=self._guard, args=(target, args), daemon=True)
         with self._lock:
@@ -345,19 +380,8 @@ class Engine:
                 if self._stop.is_set():
                     return None
                 line_info = self._pick_voice_info(line, voices, info)
-                proc = subprocess.Popen(
-                    piper_command(exe, line_info, ls, pause, noise_scale=noise_scale,
-                                  noise_w=noise_w),
-                    stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE, cwd=os.path.dirname(exe) or None,
-                    creationflags=_NO_WINDOW,
-                )
-                with self._lock:
-                    self._proc = proc
-                threading.Thread(target=_drain, args=(proc.stderr, errors),
-                                 daemon=True).start()
-                out, _ = proc.communicate((line + "\n").encode("utf-8"))
-                pcm += out
+                pcm += self._render_piper_line(exe, line_info, line, ls, pause,
+                                               noise_scale, noise_w, errors)
             if self._stop.is_set():
                 return None
             if not pcm:
@@ -371,6 +395,95 @@ class Engine:
             # Tell the overlay only once the device is actually running, so its
             # word clock isn't offset by the stream-open latency.
             self._pump(reader, rate, volume,
+                       on_start=(lambda: on_ready(duration)) if on_ready else None)
+        finally:
+            if on_done:
+                on_done()
+        return None
+
+    def _render_piper_line(self, exe, info, line, ls, pause, noise_scale, noise_w,
+                           errors):
+        """One line through its own piper process, to completion: PCM bytes at
+        info["rate"]. stop() can kill it mid-way (it is published as _proc)."""
+        proc = subprocess.Popen(
+            piper_command(exe, info, ls, pause, noise_scale=noise_scale,
+                          noise_w=noise_w),
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, cwd=os.path.dirname(exe) or None,
+            creationflags=_NO_WINDOW,
+        )
+        with self._lock:
+            self._proc = proc
+        threading.Thread(target=_drain, args=(proc.stderr, errors),
+                         daemon=True).start()
+        out, _ = proc.communicate((line + "\n").encode("utf-8"))
+        return out
+
+    # -- Kokoro -----------------------------------------------------------
+    def _kokoro_lines(self, text, vid, speed, pause, errors):
+        """PCM (int16, 24 kHz) per prepared line, synthesised one at a time so
+        a caller streaming it plays line n while line n+1 is being made.
+
+        Stops between lines when stop() is called. A Kokoro inference itself
+        can't be interrupted, but each is one sentence-sized line (0.25-0.55 s
+        on CPU, measured), and stop() has already silenced the audio by then.
+        """
+        silence = b"\x00\x00" * int(kokoro_tts.SAMPLE_RATE * pause)
+        piper = self._piper_for_georgian()
+        for line in (ln for ln in text.split("\n") if ln.strip()):
+            if self._stop.is_set():
+                return
+            if piper and speech.detect_script(line) == "ka":
+                exe, info, noise = piper
+                pcm = self._render_piper_line(exe, info, line,
+                                              speech.length_scale(speed), pause,
+                                              noise[0], noise[1], errors)
+                pcm = resample_pcm(pcm, info["rate"], kokoro_tts.SAMPLE_RATE)
+            else:
+                pcm = kokoro_tts.synth_pcm(line, vid, speed)
+                if pcm:
+                    pcm += silence  # Piper's --sentence_silence, by hand
+            if pcm and not self._stop.is_set():
+                yield pcm
+
+    def _piper_for_georgian(self):
+        """(exe, voice info, noise) for Georgian lines in Kokoro mode, or None
+        when auto-detect is off or Piper / a Georgian voice isn't installed —
+        Kokoro then reads those lines itself, as best it can."""
+        if self.config is None or not self.config.get("auto_language", True):
+            return None
+        exe = piper_exe(self._cfg("piper_exe", ""))
+        voices = self.voices()
+        vid = self._georgian_voice_id(voices)
+        if not vid or not os.path.exists(exe):
+            return None
+        return exe, voices[vid], self._noise()
+
+    def _stream_kokoro(self, text, vid, speed, pause, volume):
+        """Kokoro counterpart of _stream_piper: same player, 24 kHz."""
+        errors = []
+        lines = self._kokoro_lines(text, vid, speed, pause, errors)
+        self._pump(_chunked_reader(lines), kokoro_tts.SAMPLE_RATE, volume)
+        return None
+
+    def _kokoro_then_play(self, text, vid, speed, pause, volume, on_ready, on_done):
+        """Kokoro counterpart of _synth_then_play (reading mode): render every
+        line, then play, so the overlay knows the total duration up front."""
+        rate = kokoro_tts.SAMPLE_RATE
+        try:
+            errors = []
+            pcm = bytearray()
+            for chunk in self._kokoro_lines(text, vid, speed, pause, errors):
+                pcm += chunk
+            if self._stop.is_set():
+                return None
+            if not pcm:
+                message = (b"".join(errors).decode("utf-8", "replace").strip()
+                           or "synthesis failed")
+                self._emit("error", message)
+                return message
+            duration = len(pcm) / 2 / float(rate)
+            self._pump(_bytes_reader(bytes(pcm)), rate, volume,
                        on_start=(lambda: on_ready(duration)) if on_ready else None)
         finally:
             if on_done:
@@ -491,6 +604,43 @@ def _bytes_reader(data):
         return chunk
 
     return read
+
+
+def _chunked_reader(chunks):
+    """A read(n) over an iterator of PCM byte strings (one per line), pulling
+    the next one only when the current one is used up — so a lazily
+    synthesising iterator renders line n+1 while _pump plays line n."""
+    it = iter(chunks)
+    state = {"buf": b""}
+
+    def read(n):
+        while not state["buf"]:
+            nxt = next(it, None)
+            if nxt is None:
+                return b""
+            state["buf"] = nxt
+        data, state["buf"] = state["buf"][:n], state["buf"][n:]
+        return data
+
+    return read
+
+
+def resample_pcm(data, src_rate, dst_rate):
+    """int16 mono PCM from src_rate to dst_rate by linear interpolation.
+
+    Only used for Piper's 22.05 kHz Georgian lines inside a 24 kHz Kokoro
+    stream: a 9% upsample of speech, where linear interpolation is inaudible
+    and pulls in no resampling library.
+    """
+    if not data or src_rate == dst_rate:
+        return data
+    import numpy as np
+
+    src = np.frombuffer(data[:len(data) - len(data) % 2], dtype="<i2").astype(np.float32)
+    n_out = int(round(len(src) * dst_rate / float(src_rate)))
+    positions = np.linspace(0, len(src) - 1, n_out, dtype=np.float64)
+    out = np.interp(positions, np.arange(len(src)), src)
+    return np.clip(np.round(out), -32768, 32767).astype("<i2").tobytes()
 
 
 def _drain(pipe, sink, cap=8192):

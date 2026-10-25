@@ -1,4 +1,4 @@
-"""Read the selected text aloud, anywhere in Windows, with Piper neural voices.
+"""Read the selected text aloud, anywhere in Windows, with Piper or Kokoro voices.
 
 Windows port of the Linux/GNOME read-aloud.py. Press the hotkey (default
 Ctrl+Shift+A) to read whatever is selected in any app; press it again to stop.
@@ -36,6 +36,7 @@ import bootstrap  # noqa: F401  (repo root on sys.path)
 import engine
 import foreground
 import ipc
+import kokoro_tts
 import overlay
 import selection
 import speech
@@ -58,8 +59,10 @@ def _is_georgian_voice(vid):
     return vid.startswith("ka_") or vid.startswith("ka-")
 
 DEFAULTS = {
-    "voice": "",                 # default/English voice; "" -> preferred, else first
-    "voice_georgian": "",        # voice for Georgian text; "" -> first ka_ voice
+    "engine": "piper",           # "piper" or "kokoro" (see engine.py)
+    "voice": "",                 # Piper default/English voice; "" -> preferred, else first
+    "kokoro_voice": "",          # Kokoro voice; "" -> af_heart, else first
+    "voice_georgian": "",        # Piper voice for Georgian text (both engines); "" -> first ka_
     "auto_language": True,       # detect Georgian per line and switch voice
     "speed": 1.0,                # multiplier; piper wants its inverse
     "volume": 1.0,               # applied to the PCM ourselves
@@ -80,7 +83,7 @@ DEFAULTS = {
     "noise_w": 0.4,
 }
 
-TEST_PHRASE = "This is a test of the selected Piper voice."
+TEST_PHRASE = "This is a test of the selected voice."
 
 
 class ReaderApp:
@@ -96,10 +99,13 @@ class ReaderApp:
         self.window = None
         self.overlay = None
         self._overlay_t0 = 0.0
+        self._engine_name = self.engine.engine_name()
 
     # -- lifecycle --------------------------------------------------------
     def start(self, open_settings=False):
         selection.warm_up()  # comtypes + UIA object, off the hotkey path
+        if self._engine_name == "kokoro":
+            kokoro_tts.warm_up()  # model load, so the first read doesn't wait
         self.tracker.start()
         self.control.start()
         self.rebind()
@@ -140,8 +146,10 @@ class ReaderApp:
         call_on_ui_thread(self.window.show)
 
     # -- config -----------------------------------------------------------
-    def voice_ids(self):
-        """Non-Georgian voices, for the default/English picker."""
+    def voice_ids(self, engine_name=None):
+        """Voices for the main picker: Kokoro's, or Piper's non-Georgian ones."""
+        if (engine_name or self.engine.engine_name()) == "kokoro":
+            return kokoro_tts.voices()
         return [v for v in self.engine.voices() if not _is_georgian_voice(v)]
 
     def georgian_voice_ids(self):
@@ -157,6 +165,15 @@ class ReaderApp:
         autostart.set_enabled("WinThingsReader", __file__, enabled)
 
     def on_config_change(self, _config):
+        name = self.engine.engine_name()
+        if name != self._engine_name:
+            self._engine_name = name
+            # Load Kokoro's model as soon as it is picked; free it (~350 MB)
+            # when switching back to Piper.
+            if name == "kokoro":
+                kokoro_tts.warm_up()
+            else:
+                kokoro_tts.unload()
         if self.tray is not None:
             self.tray.set_tooltip(f"Piper Read Aloud — {status_for(self)[0]}")
 
@@ -324,7 +341,9 @@ def main(argv=None):
 
     if args.list_voices:
         for vid in speech.discover_voices(config["voices_dir"]):
-            print(vid)
+            print(f"piper   {vid}")
+        for vid in kokoro_tts.voices():
+            print(f"kokoro  {vid}")
         return 0
 
     if args.stop:

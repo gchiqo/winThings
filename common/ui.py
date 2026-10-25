@@ -95,12 +95,15 @@ class Row(ctk.CTkFrame):
             font=theme.font(ctk), text_color=theme.FG,
         )
         text.grid(row=0, column=0, sticky="w", padx=(0, theme.PAD))
+        self.hint_label = None  # kept so a subclass can reword the hint later
         if hint:
-            ctk.CTkLabel(
+            self.hint_label = ctk.CTkLabel(
                 self, text=hint, anchor="w", justify="left",
                 font=theme.font(ctk, theme.FONT_SIZE_SMALL),
                 text_color=theme.FG_FAINT, wraplength=380,
-            ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(2, 0))
+            )
+            self.hint_label.grid(row=1, column=0, columnspan=2, sticky="w",
+                                 pady=(2, 0))
         self.control_cell = (0, 1)
 
 

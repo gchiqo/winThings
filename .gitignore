@@ -4,9 +4,11 @@ __pycache__/
 .venv/
 venv/
 
-# Piper runtime + voice models are large binaries, downloaded per-machine
+# Piper runtime, Piper voices and the Kokoro model are large binaries,
+# downloaded per-machine
 reader/piper/
 reader/voices/
+reader/kokoro/
 *.onnx
 *.onnx.json
 
