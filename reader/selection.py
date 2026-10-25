@@ -268,6 +268,7 @@ class _UiaWorker:
         # comtypes initialises COM for the importing thread at import time, as
         # STA unless sys.coinit_flags says otherwise. UIA clients belong in the
         # MTA, and nothing else in the reader uses comtypes.
+        logging.getLogger("comtypes").setLevel(logging.WARNING)  # cache chatter
         had_flags = hasattr(sys, "coinit_flags")
         if not had_flags:
             sys.coinit_flags = 0  # COINIT_MULTITHREADED

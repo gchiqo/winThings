@@ -4,14 +4,18 @@
 Each app is an independent process with its own tray icon, so they can be run
 individually. This just starts/stops them together for convenience.
 
-    python winthings.py              start every app not already running
+    python winthings.py              start the default apps not already running
     python winthings.py reader       start only that one
+    python winthings.py clipboard    retired apps still start when named
     python winthings.py --status     what's running
     python winthings.py --stop       stop everything
     python winthings.py --console    start with consoles attached (for debugging)
 
 Apps guard themselves with a named mutex (common/singleton.py), so starting one
 that's already up is a no-op rather than a duplicate tray icon.
+
+The clipboard app is retired in favour of CopyQ: it stays in the repo and runs
+if asked for by name, but a bare `winthings.py` no longer starts it.
 """
 
 import argparse
@@ -25,6 +29,8 @@ APPS = {
     "reader": "Read selected text aloud",
     "transcriber": "Audio-to-text (Whisper)",
 }
+RETIRED = {"clipboard"}  # not started by default; see the module docstring
+DEFAULT_APPS = [app for app in APPS if app not in RETIRED]
 
 
 def entry_point(app):
@@ -97,7 +103,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("apps", nargs="*", metavar="APP",
-                    help=f"apps to act on: {', '.join(APPS)} (default: all)")
+                    help=f"apps to act on: {', '.join(APPS)} (default: "
+                         f"{', '.join(DEFAULT_APPS)} to start, all to stop)")
     ap.add_argument("--stop", action="store_true", help="stop instead of start")
     ap.add_argument("--status", action="store_true", help="show what's running")
     ap.add_argument("--console", action="store_true",
@@ -107,12 +114,15 @@ def main():
     unknown = [a for a in args.apps if a not in APPS]
     if unknown:
         ap.error(f"unknown app(s): {', '.join(unknown)}. Choose from: {', '.join(APPS)}")
-    targets = args.apps or list(APPS)
+    # Stopping with no names still stops a retired app that was started by hand.
+    targets = args.apps or (list(APPS) if args.stop else DEFAULT_APPS)
 
     if args.status:
         for app in APPS:
-            built = "" if os.path.exists(entry_point(app)) else "  (not built)"
-            print(f"  {app:<10} {'running' if running(app) else 'stopped'}{built}")
+            note = "" if os.path.exists(entry_point(app)) else "  (not built)"
+            if app in RETIRED:
+                note += "  (retired; start by name)"
+            print(f"  {app:<11} {'running' if running(app) else 'stopped'}{note}")
         return
 
     print("Stopping:" if args.stop else "Starting:")

@@ -1,5 +1,9 @@
 # Clipboard Manager
 
+> **Retired.** Replaced by [CopyQ](https://hluk.github.io/CopyQ/). The code stays
+> here and still runs, but `winthings.py` no longer starts it unless asked for by
+> name (`winthings.py clipboard`), and nothing registers it to start with Windows.
+
 A tray-resident clipboard history for Windows 11 with **search** and
 **persistence** — the two things Windows' own `Win+V` doesn't give you. History
 lives in SQLite and survives reboots; every entry is searchable, not just pinned
@@ -7,12 +11,15 @@ ones.
 
 ## Running it
 
+From the repo root (`C:\dev\scraps\winThings`), with the uv venv set up as in the
+[top-level README](../README.md#setup):
+
 ```
-C:\Users\c\AppData\Local\Programs\Python\Python312\python.exe D:\code\winThings\clipboard\app.py
+.venv\Scripts\python.exe clipboard\app.py
 ```
 
-For a background launch with no console window, use `pythonw.exe` instead — that
-is what the **Start with Windows** switch registers.
+For a background launch with no console window, use `.venv\Scripts\pythonw.exe`
+instead — that is what the **Start with Windows** switch registers.
 
 Flags:
 

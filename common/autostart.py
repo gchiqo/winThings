@@ -2,16 +2,25 @@
 
 HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run needs no admin rights and
 survives Windows upgrades. Launched with pythonw.exe so no console flashes up.
+
+The registered interpreter is the repo's own venv (.venv, created by uv) when it
+exists, whichever interpreter happened to launch the app, so a login start gets
+the same dependencies as `.venv\\Scripts\\python.exe app.py` does.
 """
 
 import os
 import sys
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+VENV_PYTHONW = os.path.join(REPO, ".venv", "Scripts", "pythonw.exe")
 
 
 def _pythonw():
-    """pythonw.exe next to the running interpreter, else python.exe."""
+    """The repo venv's pythonw.exe, else pythonw.exe next to the running
+    interpreter, else that interpreter."""
+    if os.path.exists(VENV_PYTHONW):
+        return VENV_PYTHONW
     exe = sys.executable or "python.exe"
     if os.path.basename(exe).lower() == "python.exe":
         noconsole = os.path.join(os.path.dirname(exe), "pythonw.exe")

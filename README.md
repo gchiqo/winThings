@@ -1,16 +1,17 @@
 # WinThings
 
-Two independent Windows 11 tray utilities that share a look, a settings pattern
-and a config layout. Each runs as its own background process with its own tray
-icon; neither touches Explorer, the Start menu or the taskbar.
+Independent Windows 11 tray utilities that share a look, a settings pattern and
+a config layout. Each runs as its own background process with its own tray icon;
+none touches Explorer, the Start menu or the taskbar.
 
 | App | What it does | Default hotkey |
 |---|---|---|
-| [clipboard](clipboard/) | Searchable clipboard history that survives reboot | `Ctrl+Shift+V` |
 | [reader](reader/) | Reads the selected text aloud with a Piper neural voice | `Ctrl+Shift+A` |
+| [transcriber](transcriber/) | Local speech-to-text for audio files (faster-whisper) | — |
+| [clipboard](clipboard/) | **Retired** in favour of [CopyQ](https://hluk.github.io/CopyQ/). Kept in the repo, not started by default | `Ctrl+Shift+V` |
 
-Both start with Windows via `HKCU\...\Run` (`WinThingsClipboard`,
-`WinThingsReader`), toggleable from each settings window.
+Each can start with Windows via `HKCU\...\Run` (`WinThingsReader`, …), toggled
+from its settings window; nothing is registered by default.
 
 There is no system-monitor or dock app. Earlier versions had a floating dock
 panel and a set of CPU/RAM/GPU tray readouts; both were removed as unwanted. They
@@ -33,17 +34,22 @@ Also in [screenshots/](screenshots/): `clipboard-popup.png`,
 
 ## Setup
 
-Python 3.12 lives at `C:\Users\c\AppData\Local\Programs\Python\Python312\` and is
-**not on PATH**, so every command below uses the full interpreter path.
+The repo lives at `C:\dev\scraps\winThings` and uses a [uv](https://docs.astral.sh/uv/)
+virtualenv in `.venv` (Python 3.12). From the repo root:
 
 ```
-C:\Users\c\AppData\Local\Programs\Python\Python312\python.exe -m pip install -r requirements.txt
+uv venv --python 3.12                 (once; creates .venv)
+uv pip install -r requirements.txt
 ```
 
-The reader needs `piper.exe` and at least one voice. Both are **already installed**
-here: Piper 2023.11.14 in `reader\piper\`, and the `en_US-ryan-medium` voice (US
-male, medium quality) in `reader\voices\`. They are gitignored, so a fresh clone
-has to fetch them again — see [reader/README.md](reader/README.md).
+Every command below runs from the repo root with the venv's interpreter,
+`.venv\Scripts\python.exe` (or `pythonw.exe` for no console window). Nothing
+needs Python on PATH.
+
+The reader needs `piper.exe` and at least one voice in `reader\piper\` and
+`reader\voices\`. They are gitignored and **not installed in this checkout yet**;
+see [reader/README.md](reader/README.md#installing-piperexe-and-voices). Without
+them the reader runs, but its status line says `piper.exe not found`.
 
 ---
 
@@ -52,31 +58,32 @@ has to fetch them again — see [reader/README.md](reader/README.md).
 Each app is standalone:
 
 ```
-python.exe clipboard\app.py
-python.exe reader\app.py
+.venv\Scripts\python.exe reader\app.py
+.venv\Scripts\python.exe transcriber\app.py
 ```
 
-Or drive both with the launcher:
+Or drive them with the launcher:
 
 ```
-python.exe winthings.py              start everything not already running
-python.exe winthings.py reader       start just that one
-python.exe winthings.py --status     what is running
-python.exe winthings.py --stop       stop everything
-python.exe winthings.py --console    start with consoles attached, to see tracebacks
+.venv\Scripts\python.exe winthings.py              start reader + transcriber if not running
+.venv\Scripts\python.exe winthings.py reader       start just that one
+.venv\Scripts\python.exe winthings.py clipboard    the retired clipboard app, only when named
+.venv\Scripts\python.exe winthings.py --status     what is running
+.venv\Scripts\python.exe winthings.py --stop       stop everything (clipboard included)
+.venv\Scripts\python.exe winthings.py --console    start with consoles attached, to see tracebacks
 ```
 
-Use `pythonw.exe` instead of `python.exe` to avoid a console window. Each app holds a
+Use `.venv\Scripts\pythonw.exe` instead to avoid a console window. Each app holds a
 named mutex, so launching one twice is a no-op rather than a duplicate tray icon.
 "Start with Windows" in any settings window registers that app under the per-user
-`HKCU\...\CurrentVersion\Run` key.
+`HKCU\...\CurrentVersion\Run` key, always with `.venv\Scripts\pythonw.exe`.
 
 ---
 
 ## Layout
 
 ```
-common/       shared by both apps - treat as the suite's API
+common/       shared by all apps - treat as the suite's API
   config.py     JSON config: defaults, atomic writes, change subscriptions
   ui.py         SettingsWindow base + the row widgets + cross-thread pump()
   theme.py      one palette, fonts and metrics
@@ -87,8 +94,9 @@ common/       shared by both apps - treat as the suite's API
   autostart.py  start-with-Windows via the Run key
   singleton.py  named-mutex single-instance guard
   paths.py      %APPDATA%\WinThings\<app>\
-clipboard/    app.py store.py winclip.py popup.py settings.py
 reader/       app.py speech.py engine.py selection.py overlay.py ipc.py settings.py
+transcriber/  app.py engine.py output.py window.py settings.py
+clipboard/    app.py store.py winclip.py popup.py settings.py   (retired)
 winthings.py  launcher
 ```
 
@@ -107,10 +115,10 @@ call `common.ui.pump(root)` once.
 These are real constraints of running unelevated Python on Windows, not
 oversights — they are documented per-app in more detail.
 
-**Both apps.** Global hotkeys go through `RegisterHotKey`, so each combination has
+**All apps.** Global hotkeys go through `RegisterHotKey`, so each combination has
 exactly one owner system-wide. If something else already owns yours, the bind
 fails and the settings window says so instead of the hotkey silently doing
-nothing — measured on this machine, `Win+Shift+A` is already taken by another
+nothing — measured on the original dev machine, `Win+Shift+A` was taken by another
 application. A hotkey also will not fire while an elevated window has focus,
 unless the app is elevated too.
 

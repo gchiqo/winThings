@@ -1,4 +1,6 @@
-# Shared by both apps
+# Install into the repo's venv:  uv pip install -r requirements.txt
+
+# Shared
 pywin32>=306          # clipboard, window focus, named mutex
 pystray>=0.19.5       # tray icons
 Pillow>=10.0          # tray icon rendering, clipboard image thumbnails
@@ -14,3 +16,9 @@ psutil>=5.9           # process lookup for winthings.py --stop / exclude-list
 sounddevice>=0.4.6    # in-process PCM playback (avoids needing ffmpeg)
 numpy>=1.24           # PCM buffer handling for sounddevice
 comtypes>=1.4         # UI Automation selection capture (no clipboard)
+
+# Transcriber
+faster-whisper>=1.0   # Whisper via CTranslate2; bundles PyAV, so no ffmpeg needed
+# Optional, for the NVIDIA GPU path (transcriber/engine.py finds their DLLs):
+# nvidia-cublas-cu12
+# nvidia-cudnn-cu12

@@ -9,12 +9,16 @@ Whisper). Nothing is uploaded anywhere; it all runs on this machine.
 
 ## Running it
 
+From the repo root (`C:\dev\scraps\winThings`), with the uv venv set up as in the
+[top-level README](../README.md#setup) — `faster-whisper` is in requirements.txt:
+
 ```
-C:\Users\c\AppData\Local\Programs\Python\Python312\pythonw.exe D:\code\winThings\transcriber\app.py
+.venv\Scripts\pythonw.exe transcriber\app.py
 ```
 
-Or `python.exe transcriber\app.py <audio-file>` to load a file straight away
-(handy as an "Open with" target). A tray icon reopens the window and quits.
+Or `.venv\Scripts\python.exe transcriber\app.py <audio-file>` to load a file
+straight away (handy as an "Open with" target). A tray icon reopens the window and
+quits.
 
 ## Using it
 
@@ -44,10 +48,13 @@ Models download automatically on first use into
 ## GPU
 
 The app uses the NVIDIA GPU when the CUDA runtime libraries are present
-(`nvidia-cublas-cu12`, `nvidia-cudnn-cu12`, installed via pip). On this machine
-they are installed, so `device: auto` runs on the RTX 3050 — several times faster
-than CPU, which makes the `medium`/`large-v3` models practical. If the GPU can't
-load, it falls back to CPU automatically and the status line says so.
+(`nvidia-cublas-cu12`, `nvidia-cudnn-cu12`; optional, commented in
+requirements.txt — `uv pip install nvidia-cublas-cu12 nvidia-cudnn-cu12`). They are
+not installed in this venv yet, so the GPU path (this machine has an RTX 5070
+Laptop GPU) isn't set up. On the original dev machine (RTX 3050) the GPU was
+several times faster than CPU, which makes the
+`medium`/`large-v3` models practical. If the GPU can't load, it falls back to CPU
+automatically and the status line says so.
 
 ## Notes / limits
 

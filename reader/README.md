@@ -3,30 +3,33 @@
 Select text anywhere in Windows, press `Ctrl+Shift+A`, and it is read aloud with a
 Piper neural voice. Press the hotkey again to stop.
 
-This is a port of a working Linux/GNOME tool (`D:\code\readerpy`). The text-cleaning
-and sentence-chunking pipeline is carried over verbatim — it was tuned against real
-Piper output — and everything OS-facing was rewritten for Windows.
+This is a port of a working Linux/GNOME tool (`read-aloud.py`, not in this repo).
+The text-cleaning and sentence-chunking pipeline is carried over verbatim — it was
+tuned against real Piper output — and everything OS-facing was rewritten for
+Windows.
 
 ---
 
 ## Running it
 
+From the repo root (`C:\dev\scraps\winThings`), with the uv venv set up as in the
+[top-level README](../README.md#setup):
+
 ```
-C:\Users\c\AppData\Local\Programs\Python\Python312\python.exe D:\code\winThings\reader\app.py
+.venv\Scripts\python.exe reader\app.py
 ```
 
-Python 3.12 is not on PATH on this machine, so use the full interpreter path. It runs
-as a tray app: the icon sits in the notification area, right-click for
+It runs as a tray app: the icon sits in the notification area, right-click for
 Read selection / Stop / Settings / Quit.
 
-For no console window, use `pythonw.exe` instead of `python.exe` (that is what the
+For no console window, use `.venv\Scripts\pythonw.exe` instead (that is what the
 "Start with Windows" switch registers).
 
 The app starts fine with no Piper installed — the settings window just shows
 `piper.exe not found` in the status line instead of reading anything.
 
-Dependencies (already installed here): `pywin32`, `pystray`, `Pillow`,
-`customtkinter`, `keyboard`, `sounddevice`, `numpy`.
+Dependencies are in the repo's [requirements.txt](../requirements.txt)
+(`uv pip install -r requirements.txt`).
 
 ---
 
@@ -181,15 +184,15 @@ app.py --list-voices
 ```
 
 A second bare `app.py` while one is already running opens the first one's settings
-window instead of starting a duplicate tray icon and keyboard hook.
+window instead of starting a duplicate tray icon and hotkey.
 
 ---
 
 ## What was ported, and what changed
 
-**Carried over verbatim** (`speech.py`) — a regression test diffs these against
-`D:\code\readerpy\read-aloud.py` on ~3000 fuzz inputs plus hand-picked nasty cases,
-and every result is identical:
+**Carried over verbatim** (`speech.py`) — at port time a regression test diffed these
+against the original Linux `read-aloud.py` (not in this repo) on ~3000 fuzz inputs
+plus hand-picked nasty cases, and every result was identical:
 
 - `clean_for_speech`, `clean_token` and the regex constants `ABBREV`, `CTRL_RE`,
   `URL_RE`, `WWW_RE`, `EMAIL_RE`, `RULE_RE`, `DASHES_RE`, `TOKEN_RE`, `CODEY_RE`,
@@ -250,8 +253,8 @@ These are real limits, not oversights:
   need that (and accept the UAC prompt at every start).
 - **The hotkey has one owner system-wide.** `RegisterHotKey` refuses a
   combination another application already holds, and the status line reports it
-  rather than binding silently and never firing. `Win+Shift+A` is already taken
-  on this machine.
+  rather than binding silently and never firing. `Win+Shift+A` was taken on the
+  original dev machine.
 - **Reading mode has to synthesize the whole selection first.** Piper emits no word
   alignment, so word timings are estimated from the total audio duration — which
   means the overlay waits for synthesis to finish before it starts speaking. Normal
@@ -259,7 +262,7 @@ These are real limits, not oversights:
 - **Word highlighting is an estimate**, weighted by word length and trailing
   punctuation. Usually within ~150 ms; it drifts on text with unusual pronunciation.
 - **Bluetooth audio adds latency.** Opening the output stream on a BT headset
-  measured ~0.8 s on this machine, so the first word lags. Wired/USB devices open in
+  measured ~0.8 s on the original dev machine, so the first word lags. Wired/USB devices open in
   a few tens of milliseconds.
 - **"Read selection" from the tray or settings** has to restore focus to the window
   you were last using before it can copy. That is polled (`foreground.py`) and is

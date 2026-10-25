@@ -1,7 +1,7 @@
 """Put the repo root on sys.path so `import common` works however we're launched.
 
 The reader is run as a plain script (`python reader\\app.py`), not as an
-installed package, so nothing else puts d:\\code\\winThings on the path. Every
+installed package, so nothing else puts the repo root on the path. Every
 module in here that touches `common` imports this first.
 """
 
