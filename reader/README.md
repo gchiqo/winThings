@@ -103,7 +103,11 @@ Two routes, tried in order (`selection.py`):
    tools (CopyQ, Win+V) see nothing. Warm reads take 2–15 ms.
 2. **Synthetic `Ctrl+C`**, with the clipboard snapshotted first and put back
    afterwards — used only when UIA returns nothing (element has no TextPattern,
-   empty selection, timeout, error). Typically 100–150 ms.
+   empty selection, timeout, error). Typically 100–150 ms. Every format that is
+   plain data is restored byte-for-byte (text, HTML, RTF, images, Explorer file
+   lists, EMF drawings, app-specific formats), an empty clipboard is restored as
+   empty, and the restore is marked so clipboard history skips it — see the
+   limitations below for what can't come back.
 
 UIA runs on its own thread with UIA's connection/transaction timeouts at 150 ms and
 a 250 ms hard deadline, so a hung app costs a fallback, never a frozen hotkey.
@@ -215,11 +219,31 @@ original. Turn it on with the Reading mode switch.
 
 These are real limits, not oversights:
 
-- **The `Ctrl+C` fallback only restores text.** When UIA can't read the selection,
-  capturing it means pressing `Ctrl+C` in the focused app, which destroys whatever
-  was on the clipboard. We put back the previous *text*; if the clipboard held an
-  image or files, it is already gone by the time we see it and the captured text is
-  left there instead. The UIA route never touches the clipboard.
+- **The `Ctrl+C` fallback can't restore everything.** When UIA can't read the
+  selection, capturing it means pressing `Ctrl+C` in the focused app, which replaces
+  the clipboard. It is snapshotted first and put back, but some formats are not data
+  and can't be:
+  - GDI-handle formats (`CF_BITMAP`, `CF_PALETTE`, `CF_METAFILEPICT`). Windows
+    re-synthesises them from the DIB / EMF that *is* restored, so nothing visible
+    is lost.
+  - OLE object formats (`Ole Private Data`, `Embed Source`, `Object Descriptor`,
+    `Link Source`, …). They refer to the source app's live object, so after a
+    fallback Office's *Paste Special → linked/embedded object* for the earlier copy
+    is gone; ordinary paste still works.
+  - Virtual files (`FileContents` / `FileGroupDescriptor`): e.g. an Outlook
+    attachment or a file inside a zip copied in Explorer. Those are lost.
+  - Any single format over 64 MB.
+
+  Snapshotting asks apps that render lazily (Excel) to produce every format they
+  offered, which takes a moment for large copies, and Excel's "marching ants" copy
+  ends. The UIA route never touches the clipboard.
+- **The fallback's `Ctrl+C` still shows up in clipboard history.** The *restore* is
+  marked with `ExcludeClipboardContentFromMonitorProcessing`,
+  `CanIncludeInClipboardHistory = 0` and `CanUploadToCloudClipboard = 0`. CopyQ
+  17.0 honours them (measured); Win+V history is documented to. The captured selection itself is the
+  target app's own clipboard write and can't be marked; CopyQ records it even when
+  it is on the clipboard for only 30 ms. `copyq disable` / `copyq enable` around the
+  capture would stop that (measured ~35 ms each), but isn't done here.
 - **Nothing gets read from an elevated window.** A hotkey registered by a
   normal-integrity process does not fire while an admin window has focus, and the
   synthetic `Ctrl+C` would not reach it either. Run the app elevated too if you

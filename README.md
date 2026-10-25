@@ -138,7 +138,10 @@ the first 4096 characters of an entry.
 (browsers, Notepad, VS Code, Windows Terminal — see
 [reader/README.md](reader/README.md#how-the-selection-is-read)), with no clipboard
 involved. Elsewhere it falls back to synthesising `Ctrl+C` and restoring the
-previous clipboard afterwards; that restore is **text-only**, so an image or file
-list on the clipboard is lost when the fallback runs. Reading mode has to fully
-synthesise before it can start highlighting, because Piper emits no word-level
-timing.
+previous clipboard afterwards — every plain-data format, images and file lists
+included, marked so clipboard history skips the restore. OLE objects and virtual
+files can't be restored, and the `Ctrl+C` itself still lands in clipboard history
+(CopyQ, Win+V); details in
+[reader/README.md](reader/README.md#known-windows-limitations). Reading mode has to
+fully synthesise before it can start highlighting, because Piper emits no
+word-level timing.

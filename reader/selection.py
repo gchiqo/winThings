@@ -27,12 +27,14 @@ Two Windows specifics the Ctrl+C route has to work around:
     can't tell "nothing was selected" from "the selection equals what was
     already on the clipboard".
 
-Known limitation: only CF_UNICODETEXT is restored. If the clipboard held an
-image or files, Ctrl+C in the target app has already replaced it and we cannot
-put it back — the captured text is left there instead of an empty clipboard.
+The restore puts back every format that is plain data (text, HTML, RTF, images,
+file lists, and most app-registered formats), marked so that clipboard-history
+tools don't record it. What can't come back, and why, is noted at
+HGLOBAL_FORMATS and SKIP_FORMAT_NAMES.
 """
 
 import collections
+import ctypes
 import logging
 import os
 import queue
@@ -407,14 +409,211 @@ def uia_selection(deadline=UIA_DEADLINE):
 # Ctrl+C fallback
 # ---------------------------------------------------------------------------
 
+kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
+kernel32.GlobalSize.argtypes = [ctypes.c_void_p]
+kernel32.GlobalSize.restype = ctypes.c_size_t
+kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
+kernel32.GlobalLock.restype = ctypes.c_void_p
+kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+kernel32.GlobalAlloc.argtypes = [ctypes.c_uint, ctypes.c_size_t]
+kernel32.GlobalAlloc.restype = ctypes.c_void_p
+kernel32.GlobalFree.argtypes = [ctypes.c_void_p]
+user32 = ctypes.WinDLL("user32", use_last_error=True)
+user32.SetClipboardData.argtypes = [ctypes.c_uint, ctypes.c_void_p]
+user32.SetClipboardData.restype = ctypes.c_void_p
+GMEM_MOVEABLE = 0x0002
+gdi32.GetEnhMetaFileBits.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_char_p]
+gdi32.GetEnhMetaFileBits.restype = ctypes.c_uint
+gdi32.SetEnhMetaFileBits.argtypes = [ctypes.c_uint, ctypes.c_char_p]
+gdi32.SetEnhMetaFileBits.restype = ctypes.c_void_p
+gdi32.DeleteEnhMetaFile.argtypes = [ctypes.c_void_p]
+
+# Standard formats whose data is a plain HGLOBAL, so their bytes are the whole
+# story: text and its locale, DIBs, file drops, and a few legacy blobs.
+# Everything else in the standard range is a GDI or owner handle (CF_BITMAP,
+# CF_PALETTE, CF_METAFILEPICT, CF_DSP*, CF_OWNERDISPLAY, CF_PRIVATE*, CF_GDIOBJ*)
+# and is skipped.
+HGLOBAL_FORMATS = {
+    win32con.CF_TEXT, win32con.CF_SYLK, win32con.CF_DIF, win32con.CF_TIFF,
+    win32con.CF_OEMTEXT, win32con.CF_DIB, win32con.CF_RIFF, win32con.CF_WAVE,
+    win32con.CF_UNICODETEXT, win32con.CF_HDROP, win32con.CF_LOCALE,
+    win32con.CF_DIBV5,
+}
+# Windows synthesises these from CF_DIB / CF_ENHMETAFILE (which are kept, and
+# which it in turn synthesises from these), so dropping them loses nothing and
+# isn't worth a log line.
+SYNTHESISED = {win32con.CF_BITMAP, win32con.CF_PALETTE, win32con.CF_METAFILEPICT}
+FIRST_REGISTERED_FORMAT = 0xC000
+
+# Registered formats that are not self-contained data. The OLE ones identify
+# or point into the original owner's live COM object, so their bytes mean
+# nothing (or the wrong thing) once that owner no longer holds the clipboard.
+# FileContents is IStream-backed and indexed per file, so GetClipboardData can't
+# fetch it; restoring its descriptor without it would offer files that don't
+# paste.
+SKIP_FORMAT_NAMES = {
+    "Ole Private Data", "DataObject", "Object Descriptor", "Link Source",
+    "Link Source Descriptor", "Embed Source", "Embedded Object", "OwnerLink",
+    "ObjectLink", "Native", "FileContents", "FileGroupDescriptor",
+    "FileGroupDescriptorW",
+}
+MAX_FORMAT_BYTES = 64 * 1024 * 1024
+
+# Set on everything we put back, so clipboard-history tools (CopyQ honours
+# these, measured on 17.0.0) and Windows' own Win+V history don't record the
+# restore as a new copy, and it is not synced to other devices.
+DONT_RECORD = ("ExcludeClipboardContentFromMonitorProcessing",
+               "CanIncludeInClipboardHistory", "CanUploadToCloudClipboard")
+
+
+def _format_name(fmt):
+    if fmt < FIRST_REGISTERED_FORMAT:
+        return None
+    try:
+        return win32clipboard.GetClipboardFormatName(fmt)
+    except Exception:
+        return None
+
+
+def _global_bytes(handle):
+    size = kernel32.GlobalSize(handle)
+    if not size or size > MAX_FORMAT_BYTES:
+        return None, size
+    ptr = kernel32.GlobalLock(handle)
+    if not ptr:
+        return None, size
+    try:
+        return ctypes.string_at(ptr, size), size
+    finally:
+        kernel32.GlobalUnlock(handle)
+
+
+def _set_global(fmt, data):
+    """SetClipboardData with exactly these bytes. (pywin32's own version pads
+    the text formats with an extra NUL.) The clipboard owns the memory once
+    this succeeds."""
+    handle = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(data))
+    if not handle:
+        return False
+    ptr = kernel32.GlobalLock(handle)
+    if not ptr:
+        kernel32.GlobalFree(handle)
+        return False
+    ctypes.memmove(ptr, data, len(data))
+    kernel32.GlobalUnlock(handle)
+    if not user32.SetClipboardData(fmt, handle):
+        kernel32.GlobalFree(handle)
+        return False
+    return True
+
+
+def _emf_bytes(handle):
+    size = gdi32.GetEnhMetaFileBits(handle, 0, None)
+    if not size or size > MAX_FORMAT_BYTES:
+        return None
+    buf = ctypes.create_string_buffer(size)
+    if gdi32.GetEnhMetaFileBits(handle, size, buf) != size:
+        return None
+    return buf.raw
+
+
+def snapshot():
+    """Every clipboard format that can be put back faithfully, as
+    [(format, bytes)], or None if the clipboard could not be opened.
+
+    Asking for a delay-rendered format makes its owner render it now, which is
+    the price of keeping it (Excel and other big producers notice).
+    """
+    if not _open():
+        return None
+    saved, skipped = [], []
+    try:
+        fmt = win32clipboard.EnumClipboardFormats(0)
+        while fmt:
+            name = _format_name(fmt)
+            label = name or fmt
+            try:
+                if fmt == win32con.CF_ENHMETAFILE:
+                    data = _emf_bytes(win32clipboard.GetClipboardDataHandle(fmt))
+                    if data:
+                        saved.append((fmt, data))
+                    else:
+                        skipped.append(label)
+                elif fmt in HGLOBAL_FORMATS or (name and name not in SKIP_FORMAT_NAMES):
+                    data, size = _global_bytes(win32clipboard.GetClipboardDataHandle(fmt))
+                    if data:
+                        saved.append((fmt, data))
+                    else:
+                        skipped.append(f"{label} ({size} bytes)")
+                elif fmt not in SYNTHESISED:
+                    skipped.append(label)
+            except Exception:
+                skipped.append(label)
+            fmt = win32clipboard.EnumClipboardFormats(fmt)
+    finally:
+        try:
+            win32clipboard.CloseClipboard()
+        except Exception:
+            pass
+    if skipped:
+        log.info("clipboard snapshot: kept %d formats, cannot restore %s",
+                 len(saved), skipped)
+    return saved
+
+
+def _snapshot_text(saved):
+    """CF_UNICODETEXT out of a snapshot, as str, or None."""
+    for fmt, data in saved or ():
+        if fmt == win32con.CF_UNICODETEXT:
+            return data.decode("utf-16-le", "replace").split("\0", 1)[0]
+    return None
+
+
+def restore(saved):
+    """Put a snapshot back, marked so clipboard history doesn't record it."""
+    if not _open():
+        return False
+    try:
+        win32clipboard.EmptyClipboard()
+        failed = []
+        for fmt, data in saved:
+            if fmt == win32con.CF_ENHMETAFILE:
+                handle = gdi32.SetEnhMetaFileBits(len(data), data)
+                ok = bool(handle) and bool(user32.SetClipboardData(fmt, handle))
+                if handle and not ok:
+                    gdi32.DeleteEnhMetaFile(handle)
+            else:
+                ok = _set_global(fmt, data)
+            if not ok:
+                failed.append(_format_name(fmt) or fmt)
+        zero = (0).to_bytes(4, "little")
+        for name in DONT_RECORD:
+            _set_global(win32clipboard.RegisterClipboardFormat(name), zero)
+        if failed:
+            log.warning("clipboard restore: could not set %s", failed)
+        return True
+    except Exception:
+        log.warning("clipboard restore failed", exc_info=True)
+        return False
+    finally:
+        try:
+            win32clipboard.CloseClipboard()
+        except Exception:
+            pass
+
+
 def _capture_clipboard(timeout=0.6, settle=0.05, wait_for_release=True):
     """Ctrl+C the selection, read it, put the old clipboard back.
 
-    Leaves the clipboard as it found it (text formats only, see module docstring).
+    Every format snapshot() can keep is restored, not just text, and the
+    restore is marked so clipboard-history tools skip it. The Ctrl+C itself
+    is the target app's write, so it cannot be marked; see reader/README.md.
     """
     from common import hotkey
 
-    saved = get_text()
+    saved = snapshot()
+    saved_text = _snapshot_text(saved)
     before = sequence()
     if wait_for_release:
         release_modifiers()
@@ -430,7 +629,7 @@ def _capture_clipboard(timeout=0.6, settle=0.05, wait_for_release=True):
         now = sequence()
         if now is None:  # sequence numbers unavailable; fall back to the text
             fresh = get_text()
-            changed = bool(fresh) and fresh != saved
+            changed = bool(fresh) and fresh != saved_text
         else:
             changed = now != before
         if changed:
@@ -440,6 +639,8 @@ def _capture_clipboard(timeout=0.6, settle=0.05, wait_for_release=True):
     time.sleep(settle)
 
     text = get_text() or ""
-    if saved is not None and saved != text:
-        set_text(saved)
+    if saved is None:
+        log.warning("clipboard could not be snapshotted; captured text left on it")
+    else:
+        restore(saved)
     return text
