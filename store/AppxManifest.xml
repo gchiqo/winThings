@@ -16,13 +16,13 @@
   IgnorableNamespaces="uap rescap desktop">
 
   <Identity
-    Name="GiorgiChikovani.WinThingsReader"
+    Name="GiorgiChikovani.TextSelectAndListen"
     Publisher="CN=db04b614-fe6c-44b6-87b9-b975ca830697"
     Version="1.0.0.0"
     ProcessorArchitecture="x64" />
 
   <Properties>
-    <DisplayName>Piper Read Aloud</DisplayName>
+    <DisplayName>Text Select and Listen</DisplayName>
     <PublisherDisplayName>Giorgi Chikovani</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
@@ -43,7 +43,7 @@
       EntryPoint="Windows.FullTrustApplication">
 
       <uap:VisualElements
-        DisplayName="Piper Read Aloud"
+        DisplayName="Text Select and Listen"
         Description="Select any text anywhere and press Ctrl+Shift+A to hear it read aloud using neural TTS voices."
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
@@ -51,7 +51,7 @@
         <uap:DefaultTile
           Wide310x150Logo="Assets\Wide310x150Logo.png"
           Square310x310Logo="Assets\Square310x310Logo.png"
-          ShortName="Read Aloud" />
+          ShortName="TSL" />
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
       </uap:VisualElements>
 
@@ -68,7 +68,7 @@
           <desktop:StartupTask
             TaskId="WinThingsReaderStartup"
             Enabled="false"
-            DisplayName="Piper Read Aloud" />
+            DisplayName="Text Select and Listen" />
         </desktop:Extension>
       </Extensions>
     </Application>

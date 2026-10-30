@@ -1,4 +1,4 @@
-Piper Read Aloud lets you hear any text on your screen read aloud in a natural neural voice — without copying, pasting, or switching apps. Select text anywhere (a webpage, a document, an email, a PDF, a terminal), press Ctrl+Shift+A, and the app reads it to you.
+Text Select and Listen lets you hear any text on your screen read aloud in a natural neural voice — without copying, pasting, or switching apps. Select text anywhere (a webpage, a document, an email, a PDF, a terminal), press Ctrl+Shift+A, and the app reads it to you.
 
 FEATURES
 
@@ -27,4 +27,4 @@ No Python installation required — the app is fully self-contained.
 
 PRIVACY
 
-Piper Read Aloud does not collect, transmit, or store any user data outside your own device. The text you select is processed locally and never leaves your machine. Settings are saved in %APPDATA%\WinThings\reader\.
+Text Select and Listen does not collect, transmit, or store any user data outside your own device. The text you select is processed locally and never leaves your machine. Settings are saved in %APPDATA%\WinThings\reader\.

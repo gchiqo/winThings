@@ -56,7 +56,7 @@ _LINKS = [
 
 class ReaderSettings(SettingsWindow):
     APP = "reader"
-    TITLE = "Piper Read Aloud"
+    TITLE = "Text Select and Listen"
     WIDTH = 520
 
     def __init__(self, config, controller):
