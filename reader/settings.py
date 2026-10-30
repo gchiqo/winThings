@@ -11,6 +11,8 @@ Tk insists on owning the main thread, and this app also runs a tray icon and a
 keyboard hook, so there is exactly one root and it lives for the process.
 """
 
+import webbrowser
+
 import customtkinter as ctk
 
 import bootstrap  # noqa: F401
@@ -39,6 +41,18 @@ HINT_SPEED = ("Multiplier. Piper's length_scale is its inverse; Kokoro takes "
 HINT_HOTKEY = "Press once to read the selection, again to stop"
 HINT_READING = "Fullscreen overlay that highlights each word as it is read"
 
+_VOICES_HINT = (
+    "Drop any .onnx + .onnx.json file into the voices\\ folder next to the app. "
+    "Re-open Settings to see it in the list — no restart needed."
+)
+_CREDITS_HINT = "Neural TTS engine — open source, runs 100% offline"
+
+_LINKS = [
+    ("Browse voice samples",    "https://rhasspy.github.io/piper-samples/#en_US-lessac-high"),
+    ("Download voice models",   "https://docs.gladecore.com/files/piper-voice-models"),
+    ("Piper project (GPL) ↗",  "https://github.com/OHF-Voice/piper1-gpl"),
+]
+
 
 class ReaderSettings(SettingsWindow):
     APP = "reader"
@@ -62,7 +76,13 @@ class ReaderSettings(SettingsWindow):
     # -- layout -----------------------------------------------------------
     def build(self, body):
         self.add_section("Voice")
-        self.engine_menu = self._add_engine_menu()
+        # Only show the engine picker when Kokoro is actually installed; if it
+        # isn't available (e.g. in a Store build without the model files) there
+        # is nothing to switch to and the row would just say "(not installed)".
+        if kokoro_tts.problem() is None:
+            self.engine_menu = self._add_engine_menu()
+        else:
+            self.engine_menu = None
         name = self._engine()
         self.voice_menu = self.add_dropdown(
             "Voice", VOICE_KEYS[name], self.controller.voice_ids(name),
@@ -87,9 +107,32 @@ class ReaderSettings(SettingsWindow):
         self.add_switch("Start with Windows", "autostart",
                         on_toggle=self.controller.set_autostart)
 
+        self._add_voices_guide()
+
         self.add_button("Read selection", self.controller.read_selection, primary=True)
         self.add_button("Test voice", self.controller.test_voice)
         self.add_button("Stop", self.controller.stop, danger=True)
+
+    def _add_voices_guide(self):
+        self.add_section("More Voices")
+        # Hint row
+        hint = ctk.CTkLabel(
+            self.body, text=_VOICES_HINT, anchor="w", justify="left",
+            font=theme.font(ctk, theme.FONT_SIZE_SMALL),
+            text_color=theme.FG_FAINT, wraplength=440,
+        )
+        hint.pack(fill="x", padx=theme.PAD_SMALL, pady=(0, theme.PAD_SMALL))
+        # Link buttons row
+        link_row = ctk.CTkFrame(self.body, fg_color="transparent")
+        link_row.pack(fill="x", padx=theme.PAD_SMALL, pady=(0, theme.PAD))
+        for label, url in _LINKS:
+            btn = ctk.CTkButton(
+                link_row, text=label,
+                fg_color="transparent", hover_color=theme.BG_ELEVATED,
+                text_color=theme.ACCENT, anchor="w", height=26,
+                command=lambda u=url: webbrowser.open(u),
+            )
+            btn.pack(side="left", padx=(0, 6))
 
     # -- show / hide ------------------------------------------------------
     def show(self):
@@ -143,11 +186,12 @@ class ReaderSettings(SettingsWindow):
         if self.voice_menu is None:
             return
         name = self._engine()
-        problem = kokoro_tts.problem()
-        kokoro_label = KOKORO_UNAVAILABLE if problem else ENGINE_LABELS["kokoro"]
-        self.engine_menu.configure(values=[ENGINE_LABELS["piper"], kokoro_label])
-        self.engine_menu.set(kokoro_label if name == "kokoro" else ENGINE_LABELS["piper"])
-        _set_hint(self.engine_menu, problem or HINT_ENGINE)
+        if self.engine_menu is not None:
+            problem = kokoro_tts.problem()
+            kokoro_label = KOKORO_UNAVAILABLE if problem else ENGINE_LABELS["kokoro"]
+            self.engine_menu.configure(values=[ENGINE_LABELS["piper"], kokoro_label])
+            self.engine_menu.set(kokoro_label if name == "kokoro" else ENGINE_LABELS["piper"])
+            _set_hint(self.engine_menu, problem or HINT_ENGINE)
 
         key = VOICE_KEYS[name]
         ids = self.controller.voice_ids(name)

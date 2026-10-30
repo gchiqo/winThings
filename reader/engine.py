@@ -27,13 +27,13 @@ import subprocess
 import threading
 import wave
 
+import bootstrap  # noqa: F401  (sys.path + BUNDLE_DIR)
 import kokoro_tts
 import speech
 
 log = logging.getLogger("reader.engine")
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-PIPER_DIR = os.path.join(HERE, "piper")
+PIPER_DIR = os.path.join(bootstrap.BUNDLE_DIR, "piper")
 PIPER_EXE = os.path.join(PIPER_DIR, "piper.exe")
 ESPEAK_DATA = os.path.join(PIPER_DIR, "espeak-ng-data")
 

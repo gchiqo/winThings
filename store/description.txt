@@ -1,0 +1,30 @@
+Piper Read Aloud lets you hear any text on your screen read aloud in a natural neural voice — without copying, pasting, or switching apps. Select text anywhere (a webpage, a document, an email, a PDF, a terminal), press Ctrl+Shift+A, and the app reads it to you.
+
+FEATURES
+
+• Works system-wide — select text in any app and press the hotkey.
+• Two neural TTS engines: Piper (fast, offline, 30+ language voices) and Kokoro (highly natural English).
+• Georgian language auto-detection — automatically switches to a Georgian voice when Georgian text is selected, even mid-paragraph.
+• Karaoke overlay — fullscreen mode that highlights each word as it is spoken, so you can follow along.
+• Configurable hotkey — change Ctrl+Shift+A to any combination you prefer.
+• Speed and volume controls.
+• Runs silently in the system tray; click the icon for quick access to settings.
+• Start with Windows option.
+• Fully offline — no internet connection required after installation.
+
+HOW IT WORKS
+
+The app uses the open-source Piper text-to-speech engine (by Rhasspy) or the Kokoro neural model. Voice files are bundled with the app. Text is read directly on your device; nothing is sent to any server.
+
+VOICE FILES
+
+The app ships with the en_US-ryan-high English voice. Additional Piper voices (in 30+ languages) can be downloaded from the Piper voices repository and placed in the voices folder (accessible from Settings → Open voices folder).
+
+REQUIREMENTS
+
+Windows 10 version 1809 or later (Windows 11 recommended).
+No Python installation required — the app is fully self-contained.
+
+PRIVACY
+
+Piper Read Aloud does not collect, transmit, or store any user data outside your own device. The text you select is processed locally and never leaves your machine. Settings are saved in %APPDATA%\WinThings\reader\.

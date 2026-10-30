@@ -24,8 +24,10 @@ import os
 import re
 import unicodedata
 
+import bootstrap  # noqa: F401  (sys.path + BUNDLE_DIR)
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-VOICES_DIR = os.path.join(HERE, "voices")
+VOICES_DIR = os.path.join(bootstrap.BUNDLE_DIR, "voices")
 
 PREFERRED_VOICE = "en_US-ryan-high"
 

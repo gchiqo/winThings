@@ -27,8 +27,9 @@ log = logging.getLogger("reader.kokoro")
 # filters alone. Keeps reader.log readable; real errors still get through.
 logging.getLogger("phonemizer").addFilter(lambda rec: rec.levelno >= logging.ERROR)
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-KOKORO_DIR = os.path.join(HERE, "kokoro")
+import bootstrap  # noqa: F401  (sys.path + BUNDLE_DIR)
+
+KOKORO_DIR = os.path.join(bootstrap.BUNDLE_DIR, "kokoro")
 MODEL_FILE = "kokoro-v1.0.onnx"
 VOICES_FILE = "voices-v1.0.bin"
 MODEL_PATH = os.path.join(KOKORO_DIR, MODEL_FILE)

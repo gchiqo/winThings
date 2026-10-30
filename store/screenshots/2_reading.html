@@ -1,0 +1,91 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Screenshot 2 – Reading Mode</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1366px;height:768px;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif}
+
+/* Desktop underneath (blurred out) */
+body{background:#0a0a1a}
+.desktop{position:fixed;inset:0;background:radial-gradient(ellipse at 30% 60%,#0d1b4b,#050510);opacity:.4}
+
+/* Reading overlay */
+.overlay{position:fixed;inset:0;background:rgba(5,8,20,.94);display:flex;flex-direction:column;align-items:center;justify-content:center}
+
+/* Word-by-word reading content */
+.reading-container{max-width:800px;text-align:center;padding:0 48px}
+.reading-meta{font-size:12px;color:rgba(56,189,248,.5);letter-spacing:.12em;text-transform:uppercase;margin-bottom:32px;font-weight:500}
+
+/* Paragraph of text — dim words with one highlighted */
+.reading-text{font-size:28px;line-height:1.75;color:rgba(255,255,255,.22);font-weight:400;letter-spacing:-.01em}
+.reading-text .done{color:rgba(255,255,255,.38)}
+.reading-text .active{color:#bae6fd;font-weight:600;position:relative}
+.reading-text .active::after{
+  content:'';position:absolute;bottom:-3px;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,#38bdf8,#818cf8);border-radius:1px;
+}
+
+/* Progress bar -->
+.progress-wrap{margin-top:40px;width:600px}
+.progress-track{height:3px;background:rgba(255,255,255,.08);border-radius:2px}
+.progress-fill{height:3px;width:38%;background:linear-gradient(90deg,#38bdf8,#818cf8);border-radius:2px;box-shadow:0 0 8px #38bdf860}
+.progress-labels{display:flex;justify-content:space-between;margin-top:8px}
+.progress-labels span{font-size:11px;color:rgba(255,255,255,.25);letter-spacing:.04em}
+
+/* Stop hint -->
+.hint{margin-top:32px;font-size:12px;color:rgba(255,255,255,.18);letter-spacing:.04em}
+.hint kbd{display:inline-block;padding:2px 8px;border:1px solid rgba(56,189,248,.2);border-radius:4px;color:rgba(56,189,248,.5);font-size:11px;font-family:inherit}
+
+/* Taskbar — still visible at bottom */
+.taskbar{position:fixed;bottom:0;left:0;right:0;height:40px;background:rgba(10,10,26,.95);border-top:1px solid rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;gap:6px}
+.tb-icon{width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px;color:rgba(255,255,255,.25)}
+.taskbar-right{position:fixed;bottom:0;right:0;height:40px;display:flex;align-items:center;padding-right:14px;font-size:11px;color:rgba(255,255,255,.3)}
+</style>
+</head>
+<body>
+
+<div class="desktop"></div>
+
+<div class="overlay">
+  <div class="reading-container">
+    <div class="reading-meta">Reading mode &nbsp;·&nbsp; Piper &nbsp;·&nbsp; en_US-ryan-high</div>
+
+    <div class="reading-text">
+      <span class="done">Select any text anywhere on your PC —</span>
+      <span class="done"> a webpage, a document, an email, a PDF —</span>
+      <span class="done"> and press</span>
+      <span class="done"> Ctrl+Shift+A</span>
+      <span class="done"> to hear</span>
+      <span class="done"> it</span>
+      &nbsp;<span class="active">read&nbsp;aloud</span>&nbsp;
+      <span>in a natural neural voice,</span>
+      <span> without copying,</span>
+      <span> pasting,</span>
+      <span> or switching apps.</span>
+    </div>
+
+    <div class="progress-wrap">
+      <div class="progress-track"><div class="progress-fill"></div></div>
+      <div class="progress-labels">
+        <span>0:08</span>
+        <span>sentence 2 of 5</span>
+        <span>0:21</span>
+      </div>
+    </div>
+
+    <div class="hint">Press <kbd>Ctrl+Shift+A</kbd> or <kbd>Esc</kbd> to stop</div>
+  </div>
+</div>
+
+<div class="taskbar">
+  <div class="tb-icon">🔍</div>
+  <div class="tb-icon">📄</div>
+  <div class="tb-icon">🌐</div>
+  <div class="tb-icon">📁</div>
+</div>
+<div class="taskbar-right">10:43 AM</div>
+
+</body>
+</html>
