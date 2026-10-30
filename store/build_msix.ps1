@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Build the Piper Read Aloud MSIX package ready for Microsoft Store submission.
+  Build the Read Selected MSIX package ready for Microsoft Store submission.
 
 .DESCRIPTION
   Steps:
@@ -47,7 +47,7 @@ $RepoDir   = Split-Path -Parent $PSScriptRoot      # winThings\
 $StoreDir  = $PSScriptRoot                          # winThings\store\
 $Staging   = Join-Path $RepoDir "msix_staging"
 $DistDir   = Join-Path $RepoDir "dist\reader"
-$OutMsix   = Join-Path $RepoDir "dist\PiperReadAloud_$Version.msix"
+$OutMsix   = Join-Path $RepoDir "dist\ReadSelected_$Version.msix"
 
 # Find makeappx.exe from the installed Windows SDK
 function Find-WinSdkTool([string]$Name) {
@@ -143,7 +143,7 @@ if ($SignForTesting) {
         $cert = New-SelfSignedCertificate `
             -Type Custom -Subject "CN=Giorgi Chikovani" `
             -KeyUsage DigitalSignature `
-            -FriendlyName "PiperReadAloud Test" `
+            -FriendlyName "ReadSelected Test" `
             -CertStoreLocation "Cert:\CurrentUser\My" `
             -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
         $pwd = ConvertTo-SecureString -String $CertPass -Force -AsPlainText

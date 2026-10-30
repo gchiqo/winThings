@@ -11,6 +11,7 @@ Tk insists on owning the main thread, and this app also runs a tray icon and a
 keyboard hook, so there is exactly one root and it lives for the process.
 """
 
+import os
 import webbrowser
 
 import customtkinter as ctk
@@ -29,7 +30,7 @@ VOICE_KEYS = {"piper": "voice", "kokoro": "kokoro_voice"}
 HINT_ENGINE = ("Piper: quick, and has the Georgian voice. Kokoro: more natural "
                "English; Georgian lines still go to Piper")
 HINT_VOICE = {
-    "piper": "Piper .onnx voices found in reader\\voices",
+    "piper": "Built-in voices plus any in Documents\\Read Selected\\Voices",
     "kokoro": ("From reader\\kokoro\\voices-v1.0.bin. First letter is the language "
                "(a = US English, b = UK English), second is f / m"),
 }
@@ -42,10 +43,10 @@ HINT_HOTKEY = "Press once to read the selection, again to stop"
 HINT_READING = "Fullscreen overlay that highlights each word as it is read"
 
 _VOICES_HINT = (
-    "Drop any .onnx + .onnx.json file into the voices\\ folder next to the app. "
-    "Re-open Settings to see it in the list — no restart needed."
+    "Pick a voice from the samples, download both its .onnx and .onnx.json "
+    "files, and put them in your voices folder. Re-open Settings to see it in "
+    "the list — no restart needed."
 )
-_CREDITS_HINT = "Neural TTS engine — open source, runs 100% offline"
 
 _LINKS = [
     ("Browse voice samples",    "https://rhasspy.github.io/piper-samples/#en_US-lessac-high"),
@@ -56,7 +57,7 @@ _LINKS = [
 
 class ReaderSettings(SettingsWindow):
     APP = "reader"
-    TITLE = "Text Select and Listen"
+    TITLE = "Read Selected"
     WIDTH = 520
 
     def __init__(self, config, controller):
@@ -123,6 +124,11 @@ class ReaderSettings(SettingsWindow):
         )
         hint.pack(fill="x", padx=theme.PAD_SMALL, pady=(0, theme.PAD_SMALL))
         # Link buttons row
+        ctk.CTkButton(
+            self.body, text="Open voices folder", command=_open_user_voices,
+            fg_color=theme.BG_ELEVATED, hover_color=theme.BG_HOVER,
+            text_color=theme.FG, height=30,
+        ).pack(anchor="w", padx=theme.PAD_SMALL, pady=(0, theme.PAD_SMALL))
         link_row = ctk.CTkFrame(self.body, fg_color="transparent")
         link_row.pack(fill="x", padx=theme.PAD_SMALL, pady=(0, theme.PAD))
         for label, url in _LINKS:
@@ -215,6 +221,11 @@ class ReaderSettings(SettingsWindow):
             return
         self.set_status(*self.controller.status())
         self.after(1000, self._tick)
+
+
+def _open_user_voices():
+    os.makedirs(speech.USER_VOICES_DIR, exist_ok=True)
+    os.startfile(speech.USER_VOICES_DIR)
 
 
 def _set_hint(control, text):

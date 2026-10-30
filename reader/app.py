@@ -111,7 +111,7 @@ class ReaderApp:
         self.rebind()
         tray_mod.set_app_id("WinThings.Reader")
         self.tray = (
-            Tray(APP, "Piper Read Aloud", "reader", theme.ACCENT)
+            Tray(APP, "Read Selected", "reader", theme.ACCENT)
             .add("Read selection", self.read_selection, default=True)
             .add("Stop", self.stop)
             .add("Settings", self.open_settings)
@@ -175,7 +175,7 @@ class ReaderApp:
             else:
                 kokoro_tts.unload()
         if self.tray is not None:
-            self.tray.set_tooltip(f"Piper Read Aloud — {status_for(self)[0]}")
+            self.tray.set_tooltip(f"Read Selected — {status_for(self)[0]}")
 
     def status(self):
         return status_for(self)
@@ -365,7 +365,7 @@ def main(argv=None):
     # than stacking a duplicate tray icon and a duplicate keyboard hook.
     if not singleton.acquire(APP):
         ipc.send(APP, "settings")
-        print("Piper Read Aloud is already running.", file=sys.stderr)
+        print("Read Selected is already running.", file=sys.stderr)
         return 0
 
     # File logging so a crash leaves a trace: "it crashed" with nothing on disk

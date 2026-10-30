@@ -1,12 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  MSIX Package Manifest for "Piper Read Aloud"
+  MSIX Package Manifest for "Read Selected"
   Developer: Giorgi Chikovani
 
   BEFORE BUILDING:
-  1. Bump Version for every Store submission (the last two numbers can stay 0).
-  2. Run store\make_assets.py to generate Assets\ before packaging.
-  Publisher: CN=db04b614-fe6c-44b6-87b9-b975ca830697 (Giorgi Chikovani, Partner Center)
+  1. Identity Name and Publisher must match Partner Center > (app) >
+     Product management > Product identity EXACTLY (Package/Identity/Name and
+     Package/Identity/Publisher). The values below are placeholders until then.
+  2. Bump Version for every Store submission (the last two numbers can stay 0).
+  3. Run store\make_assets.py to generate Assets\ before packaging.
 -->
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
@@ -16,13 +18,13 @@
   IgnorableNamespaces="uap rescap desktop">
 
   <Identity
-    Name="GiorgiChikovani.TextSelectAndListen"
+    Name="GiorgiChikovani.ReadSelected"
     Publisher="CN=db04b614-fe6c-44b6-87b9-b975ca830697"
     Version="1.0.0.0"
     ProcessorArchitecture="x64" />
 
   <Properties>
-    <DisplayName>Text Select and Listen</DisplayName>
+    <DisplayName>Read Selected</DisplayName>
     <PublisherDisplayName>Giorgi Chikovani</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
@@ -43,7 +45,7 @@
       EntryPoint="Windows.FullTrustApplication">
 
       <uap:VisualElements
-        DisplayName="Text Select and Listen"
+        DisplayName="Read Selected"
         Description="Select any text anywhere and press Ctrl+Shift+A to hear it read aloud using neural TTS voices."
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
@@ -51,7 +53,7 @@
         <uap:DefaultTile
           Wide310x150Logo="Assets\Wide310x150Logo.png"
           Square310x310Logo="Assets\Square310x310Logo.png"
-          ShortName="TSL" />
+          ShortName="Read Selected" />
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
       </uap:VisualElements>
 
@@ -68,7 +70,7 @@
           <desktop:StartupTask
             TaskId="WinThingsReaderStartup"
             Enabled="false"
-            DisplayName="Text Select and Listen" />
+            DisplayName="Read Selected" />
         </desktop:Extension>
       </Extensions>
     </Application>

@@ -19,6 +19,7 @@ lets the user point at a voices folder outside the repo (voice files are large
 and people keep them on another drive).
 """
 
+import ctypes
 import json
 import os
 import re
@@ -28,6 +29,18 @@ import bootstrap  # noqa: F401  (sys.path + BUNDLE_DIR)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 VOICES_DIR = os.path.join(bootstrap.BUNDLE_DIR, "voices")
+
+
+def _documents_dir():
+    # Known-folder lookup, so a OneDrive-redirected Documents still resolves.
+    buf = ctypes.create_unicode_buffer(260)
+    if ctypes.windll.shell32.SHGetFolderPathW(None, 5, None, 0, buf) == 0:  # CSIDL_PERSONAL
+        return buf.value
+    return os.path.join(os.path.expanduser("~"), "Documents")
+
+
+# The install folder is read-only under MSIX, so user-added voices live here.
+USER_VOICES_DIR = os.path.join(_documents_dir(), "Read Selected", "Voices")
 
 PREFERRED_VOICE = "en_US-ryan-high"
 
@@ -326,26 +339,27 @@ def voices_dir(override=None):
 
 
 def discover_voices(directory=None):
-    """Map voice id -> {model, config, rate} for every .onnx/.onnx.json pair."""
+    """Map voice id -> {model, config, rate} for every .onnx/.onnx.json pair,
+    from the bundled (or configured) folder first, then USER_VOICES_DIR."""
     voices = {}
-    directory = voices_dir(directory)
-    if not os.path.isdir(directory):
-        return voices
-    for fn in sorted(os.listdir(directory)):
-        if not fn.endswith(".onnx"):
+    for folder in (voices_dir(directory), USER_VOICES_DIR):
+        if not os.path.isdir(folder):
             continue
-        model = os.path.join(directory, fn)
-        cfg = model + ".json"
-        if not os.path.exists(cfg):
-            continue
-        vid = fn[:-len(".onnx")]
-        rate = 22050
-        try:
-            with open(cfg, encoding="utf-8") as fh:
-                rate = json.load(fh).get("audio", {}).get("sample_rate", 22050)
-        except (OSError, ValueError):
-            pass
-        voices[vid] = {"model": model, "config": cfg, "rate": rate}
+        for fn in sorted(os.listdir(folder)):
+            if not fn.endswith(".onnx"):
+                continue
+            model = os.path.join(folder, fn)
+            cfg = model + ".json"
+            vid = fn[:-len(".onnx")]
+            if vid in voices or not os.path.exists(cfg):
+                continue
+            rate = 22050
+            try:
+                with open(cfg, encoding="utf-8") as fh:
+                    rate = json.load(fh).get("audio", {}).get("sample_rate", 22050)
+            except (OSError, ValueError):
+                pass
+            voices[vid] = {"model": model, "config": cfg, "rate": rate}
     return voices
 
 

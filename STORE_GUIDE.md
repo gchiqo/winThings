@@ -1,4 +1,4 @@
-# Microsoft Store Submission Guide — Piper Read Aloud
+# Microsoft Store Submission Guide — Read Selected
 **Developer: Giorgi Chikovani**
 
 This guide walks through everything needed to get the reader app published in
@@ -17,31 +17,22 @@ the Microsoft Store, split into three phases: account setup, build, and submissi
    - Only needed once; covers all future app submissions.
 5. Fill in your name: **Giorgi Chikovani** and complete identity verification.
 
-### 1.2 Get your Publisher ID
+### 1.2 Reserve the app name
 
-After your account is approved:
-
-1. In Partner Center go to **Account settings → Legal info**.
-2. Under **Publisher identity**, copy the **Publisher ID** — it looks like:
-   ```
-   CN=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-   ```
-3. Open `store\AppxManifest.xml` and replace the placeholder:
-   ```xml
-   Publisher="CN=REPLACE_WITH_PARTNER_CENTER_PUBLISHER_ID"
-   ```
-   with your real Publisher ID, e.g.:
-   ```xml
-   Publisher="CN=12345678-abcd-1234-ef56-78901234abcd"
-   ```
-
-### 1.3 Reserve the app name
-
-1. In Partner Center go to **Windows & Xbox → Overview → Create a new app**.
-2. Enter the app name: **Piper Read Aloud**
+1. In Partner Center go to **Apps and games → New product → MSIX or PWA app**.
+2. Enter the app name: **Read Selected**
 3. Click **Reserve product name** — this secures the name before you submit.
-4. Note the **Product ID** shown after reservation (you don't need it in the manifest,
-   but Partner Center uses it to match your upload).
+
+### 1.3 Copy the package identity into the manifest
+
+1. In the reserved app go to **Product management → Product identity**.
+2. Copy these values into `store\AppxManifest.xml` exactly:
+   | Product identity field | Manifest attribute |
+   |---|---|
+   | Package/Identity/Name | `<Identity Name="...">` |
+   | Package/Identity/Publisher | `<Identity Publisher="CN=...">` |
+   | Package/Properties/PublisherDisplayName | `<PublisherDisplayName>` |
+3. If these don't match, the upload is rejected.
 
 ---
 
@@ -102,7 +93,7 @@ The script:
 1. Runs PyInstaller → `dist\reader\`
 2. Generates all required Store icons → `store\Assets\`
 3. Assembles → `msix_staging\`
-4. Packages → `dist\PiperReadAloud_1.0.0.0.msix`
+4. Packages → `dist\ReadSelected_1.0.0.0.msix`
 
 **To test locally before uploading:**
 ```powershell
@@ -112,14 +103,14 @@ Import-PfxCertificate -FilePath 'store\TestCert.pfx' `
   -Password (ConvertTo-SecureString 'test' -Force -AsPlainText)
 
 # Then install the .msix:
-Add-AppxPackage dist\PiperReadAloud_1.0.0.0.msix
+Add-AppxPackage dist\ReadSelected_1.0.0.0.msix
 ```
 
-Or just double-click `dist\PiperReadAloud_1.0.0.0.msix`.
+Or just double-click `dist\ReadSelected_1.0.0.0.msix`.
 
 **To uninstall the test build:**
 ```powershell
-Get-AppxPackage *WinThingsReader* | Remove-AppxPackage
+Get-AppxPackage *ReadSelected* | Remove-AppxPackage
 ```
 
 ---
@@ -128,7 +119,7 @@ Get-AppxPackage *WinThingsReader* | Remove-AppxPackage
 
 ### 4.1 Create a new submission
 
-1. In Partner Center, open the reserved **Piper Read Aloud** app.
+1. In Partner Center, open the reserved **Read Selected** app.
 2. Click **Start submission**.
 
 ### 4.2 Pricing and availability
@@ -150,10 +141,10 @@ Get-AppxPackage *WinThingsReader* | Remove-AppxPackage
 
 | Field | Text |
 |-------|------|
-| Title | Piper Read Aloud |
-| Short description (up to 270 chars) | Select any text anywhere on your PC and press Ctrl+Shift+A to hear it read aloud using offline neural TTS. Piper and Kokoro voices, Georgian language support, karaoke overlay, configurable hotkey. |
+| Title | Read Selected |
+| Short description (up to 270 chars) | Select any text anywhere on your PC and press Ctrl+Shift+A to hear it read aloud in a natural neural voice. Fully offline, no telemetry. English and Georgian voices included, more available for free. |
 | Description | See `store\description.txt` for the full long description. |
-| Keywords | text to speech, TTS, read aloud, accessibility, Piper, screen reader |
+| Keywords | text to speech, TTS, read selected text, accessibility, Piper, offline voice, Georgian |
 
 **Screenshots** (required — at least 1, up to 10 per device family):
 - Take screenshots with the settings window open, the reading-mode overlay active,
@@ -161,7 +152,7 @@ Get-AppxPackage *WinThingsReader* | Remove-AppxPackage
 
 ### 4.5 Packages
 
-Upload the **unsigned** `dist\PiperReadAloud_1.0.0.0.msix`.
+Upload the **unsigned** `dist\ReadSelected_1.0.0.0.msix`.
 Partner Center re-signs the package automatically during certification.
 
 ### 4.6 Submit for certification
@@ -210,7 +201,7 @@ Then rebuild:
 | Problem | Fix |
 |---------|-----|
 | `makeappx` not found | Install Windows SDK (§2.1) |
-| `REPLACE_WITH_PARTNER_CENTER_PUBLISHER_ID` warning | Update `store\AppxManifest.xml` (§1.2) |
+| Upload rejected: identity mismatch | Copy Name/Publisher from Product identity into `store\AppxManifest.xml` (§1.3) |
 | App installs but doesn't start | Check `%APPDATA%\WinThings\reader\reader.log` |
 | Hotkey not working after install | Try a different hotkey in Settings; another app may own Ctrl+Shift+A |
 | "no voices found" on first launch | Ensure `.onnx` and `.onnx.json` files are in `reader\voices\` before building |

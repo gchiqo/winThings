@@ -1,4 +1,4 @@
-# Piper Read Aloud — Windows
+# Read Selected — Windows
 
 Select text anywhere in Windows, press `Ctrl+Shift+A`, and it is read aloud with a
 neural voice — [Piper](#installing-piperexe-and-voices) or

@@ -1,30 +1,30 @@
-Text Select and Listen lets you hear any text on your screen read aloud in a natural neural voice — without copying, pasting, or switching apps. Select text anywhere (a webpage, a document, an email, a PDF, a terminal), press Ctrl+Shift+A, and the app reads it to you.
+Read Selected lets you hear any text on your screen read aloud in a natural neural voice — without copying, pasting, or switching apps. Select text anywhere (a webpage, a document, an email, a PDF), press Ctrl+Shift+A, and the app reads it to you.
 
 FEATURES
 
 • Works system-wide — select text in any app and press the hotkey.
-• Two neural TTS engines: Piper (fast, offline, 30+ language voices) and Kokoro (highly natural English).
-• Georgian language auto-detection — automatically switches to a Georgian voice when Georgian text is selected, even mid-paragraph.
-• Karaoke overlay — fullscreen mode that highlights each word as it is spoken, so you can follow along.
-• Configurable hotkey — change Ctrl+Shift+A to any combination you prefer.
-• Speed and volume controls.
-• Runs silently in the system tray; click the icon for quick access to settings.
-• Start with Windows option.
-• Fully offline — no internet connection required after installation.
+• Natural-sounding neural voices powered by Piper, running entirely on your PC.
+• Comes with three English voices (Ryan, Amy, LibriTTS-R) and a Georgian voice (Natia).
+• Georgian auto-detection — switches to the Georgian voice for Georgian text, even mid-paragraph.
+• Reading mode — a fullscreen overlay that highlights each word as it is spoken.
+• Configurable hotkey — change Ctrl+Shift+A to any combination you like.
+• Speed, volume and sentence-pause controls.
+• Runs quietly in the system tray.
+• Optional start with Windows.
+• Fully offline — no internet connection needed.
 
-HOW IT WORKS
+MORE VOICES
 
-The app uses the open-source Piper text-to-speech engine (by Rhasspy) or the Kokoro neural model. Voice files are bundled with the app. Text is read directly on your device; nothing is sent to any server.
-
-VOICE FILES
-
-The app ships with the en_US-ryan-high English voice. Additional Piper voices (in 30+ languages) can be downloaded from the Piper voices repository and placed in the voices folder (accessible from Settings → Open voices folder).
-
-REQUIREMENTS
-
-Windows 10 version 1809 or later (Windows 11 recommended).
-No Python installation required — the app is fully self-contained.
+Dozens of free Piper voices in 30+ languages are available. Open Settings → More Voices to listen to samples, download a voice, and add it with the "Open voices folder" button. No restart needed.
 
 PRIVACY
 
-Text Select and Listen does not collect, transmit, or store any user data outside your own device. The text you select is processed locally and never leaves your machine. Settings are saved in %APPDATA%\WinThings\reader\.
+Read Selected does not collect, transmit, or store any user data outside your own device. No telemetry, no accounts. The text you select is processed locally and never leaves your machine.
+
+REQUIREMENTS
+
+Windows 10 version 1809 or later (Windows 11 recommended). Everything needed is included.
+
+CREDITS
+
+Speech synthesis by Piper (github.com/OHF-Voice/piper1-gpl), open source under the GPL-3.0 license. Voice models are distributed under their own licenses.

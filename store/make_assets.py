@@ -132,7 +132,7 @@ for base, scales in SQUARE_SPECS.items():
     print(f"  {base}.png  ({smallest_px}×{smallest_px})  [manifest reference]")
 
 # ---------------------------------------------------------------------------
-# Wide310x150Logo  (navy bar, icon right, "Piper Read Aloud" text left)
+# Wide310x150Logo  (navy bar, icon right, "Read Selected" text left)
 # ---------------------------------------------------------------------------
 
 def wide_tile(w=310, h=150):
@@ -149,8 +149,8 @@ def wide_tile(w=310, h=150):
         from PIL import ImageFont
         fnt_b = ImageFont.truetype("segoeuib.ttf", h // 6)
         fnt_r = ImageFont.truetype("segoeui.ttf",  h // 9)
-        d.text((14, h // 4),       "Piper",       font=fnt_b, fill=_CYAN[:3] + (255,))
-        d.text((14, h // 4 + h // 5 + 4), "Read Aloud", font=fnt_r, fill=(255, 255, 255, 180))
+        d.text((14, h // 4),       "Read",     font=fnt_b, fill=_CYAN[:3] + (255,))
+        d.text((14, h // 4 + h // 5 + 4), "Selected", font=fnt_r, fill=(255, 255, 255, 180))
     except (OSError, ImportError):
         pass
     return wide

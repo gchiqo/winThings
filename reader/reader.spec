@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec for "Piper Read Aloud" (reader/app.py)
+# PyInstaller spec for "Read Selected" (reader/app.py)
 #
 # Run from the repo root:
 #   pyinstaller reader/reader.spec
