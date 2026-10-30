@@ -19,7 +19,9 @@ def acquire(name):
     except ImportError:
         return True  # pywin32 missing — don't block the app over a nicety
 
-    handle = win32event.CreateMutex(None, False, f"Global\\WinThings.{name}")
+    # Local\ (per logon session): a Global\ name let one Windows user's instance
+    # block, or squat, the app for every other user on the PC.
+    handle = win32event.CreateMutex(None, False, f"Local\\WinThings.{name}")
     if win32api.GetLastError() == winerror.ERROR_ALREADY_EXISTS:
         return False
     _held.append(handle)

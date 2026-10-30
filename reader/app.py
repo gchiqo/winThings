@@ -27,6 +27,7 @@ that process over a loopback socket (ipc.py) instead of a PID file.
 
 import argparse
 import logging
+import logging.handlers
 import sys
 import threading
 import time
@@ -372,7 +373,9 @@ def main(argv=None):
     # is undiagnosable, and this runs under pythonw with no console to catch a
     # traceback.
     logging.basicConfig(
-        filename=log_path(APP), filemode="a", level=logging.INFO,
+        handlers=[logging.handlers.RotatingFileHandler(
+            log_path(APP), maxBytes=1_000_000, backupCount=1, encoding="utf-8")],
+        level=logging.INFO,
         format="%(asctime)s %(levelname)s %(threadName)s %(message)s",
     )
     log.info("reader starting")

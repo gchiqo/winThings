@@ -75,6 +75,10 @@ Write-Host "`n[1/4] Running PyInstaller..." -ForegroundColor Yellow
 $PythonExe = Join-Path $RepoDir ".venv\Scripts\python.exe"
 if (-not (Test-Path $PythonExe)) { $PythonExe = "python" }
 
+# Generate comtypes' UI Automation wrappers so reader.spec can bundle them.
+& $PythonExe -c "import comtypes.client; comtypes.client.GetModule('UIAutomationCore.dll')"
+if ($LASTEXITCODE -ne 0) { throw "Generating the UI Automation wrappers failed." }
+
 & $PythonExe -m PyInstaller reader\reader.spec --clean --noconfirm
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed." }
 

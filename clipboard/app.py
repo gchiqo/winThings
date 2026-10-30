@@ -262,7 +262,7 @@ def selftest(app):
         import win32event
         import winerror
 
-        handle = win32event.CreateMutex(None, False, f"Global\\WinThings.{APP}")
+        handle = win32event.CreateMutex(None, False, f"Local\\WinThings.{APP}")
         exists = win32api.GetLastError() == winerror.ERROR_ALREADY_EXISTS
         win32api.CloseHandle(handle)
         return exists

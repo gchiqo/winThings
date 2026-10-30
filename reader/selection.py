@@ -59,6 +59,18 @@ MODIFIER_KEYS = (win32con.VK_LSHIFT, win32con.VK_RSHIFT,
                  win32con.VK_LMENU, win32con.VK_RMENU,
                  win32con.VK_LWIN, win32con.VK_RWIN)
 
+# In a terminal with nothing selected, Ctrl+C interrupts the running program, so
+# the Ctrl+C fallback is never sent to one. UI Automation still reads a selection
+# in conhost and Windows Terminal.
+TERMINAL_WINDOW_CLASSES = {
+    "ConsoleWindowClass",             # conhost: cmd, PowerShell
+    "CASCADIA_HOSTING_WINDOW_CLASS",  # Windows Terminal
+    "mintty",                         # Git Bash, MSYS2, Cygwin
+    "VirtualConsoleClass",            # ConEmu, Cmder
+    "PuTTY", "KiTTY",
+}
+XTERM_JS_CLASS = "xterm-helper-textarea"  # terminals in VS Code, Hyper, Tabby
+
 
 def _open(retries=12, delay=0.02):
     """Open the clipboard, retrying while another process owns it."""
@@ -158,10 +170,20 @@ def capture(timeout=0.6, settle=0.05, wait_for_release=True, use_uia=True):
             return text
     else:
         reason = "disabled"
+    if reason.startswith("terminal") or _terminal_window():
+        log.info("selection: no Ctrl+C in a terminal (uia: %s) app=%s", reason, app)
+        return ""
     text = _capture_clipboard(timeout, settle, wait_for_release)
     log.info("selection via clipboard (uia: %s) app=%s chars=%d %.0fms",
              reason, app, len(text), (time.perf_counter() - t0) * 1000)
     return text
+
+
+def _terminal_window():
+    try:
+        return win32gui.GetClassName(win32gui.GetForegroundWindow()) in TERMINAL_WINDOW_CLASSES
+    except Exception:
+        return False
 
 
 def _foreground_exe():
@@ -278,6 +300,14 @@ class _UiaWorker:
         finally:
             if not had_flags:
                 del sys.coinit_flags
+        if getattr(sys, "frozen", False):
+            # Frozen, comtypes adds %TEMP%\comtypes_cache\... to comtypes.gen's
+            # search path, so a .py planted there would be imported. The UIA
+            # wrappers are bundled (reader.spec); anything else stays in memory.
+            import comtypes.gen
+            comtypes.gen.__path__ = [p for p in comtypes.gen.__path__
+                                     if "comtypes_cache" not in p]
+            comtypes.client.gen_dir = None
         try:
             comtypes.CoInitializeEx(comtypes.COINIT_MULTITHREADED)
         except OSError:
@@ -360,6 +390,7 @@ def _read_selection(auto, uia):
     if not element:
         return "", "no-element", None
     framework = element.CurrentFrameworkId
+    terminal = element.CurrentClassName == XTERM_JS_CLASS
     # Browsers focus a link or a child node inside the document; the document
     # is what implements TextPattern, so look a few levels up.
     pattern = _text_pattern(element, uia)
@@ -372,7 +403,7 @@ def _read_selection(auto, uia):
         pattern = _text_pattern(element, uia)
         hops += 1
     if pattern is None:
-        return "", "no-textpattern", framework
+        return "", "terminal" if terminal else "no-textpattern", framework
 
     ranges = pattern.GetSelection()
     parts = []
@@ -382,7 +413,7 @@ def _read_selection(auto, uia):
             parts.append(text)
     text = "\n".join(parts)
     if not text.strip():
-        return "", "empty", framework
+        return "", "terminal" if terminal else "empty", framework
     return text, ("ok" if hops == 0 else f"ok+{hops}up"), framework
 
 

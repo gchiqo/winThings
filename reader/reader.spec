@@ -44,6 +44,12 @@ a = Analysis(
         'win32clipboard', 'winerror', 'pywintypes',
         # UI Automation via comtypes
         'comtypes', 'comtypes.client', 'comtypes.gen',
+        # Pre-generated UIA wrappers (build_msix.ps1 makes them), so the frozen
+        # app never generates or imports wrapper code from %TEMP%.
+        'comtypes.gen.UIAutomationClient',
+        'comtypes.gen._944DE083_8FB8_45CF_BCB7_C477ACB2F897_0_1_0',
+        'comtypes.gen.stdole',
+        'comtypes.gen._00020430_0000_0000_C000_000000000046_0_2_0',
         # tray icon
         'pystray._win32',
         # Pillow / tkinter integration
@@ -63,7 +69,9 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=['tkinter.test', 'unittest', 'distutils', 'setuptools',
-              'email', 'html', 'http', 'xml', 'xmlrpc'],
+              'email', 'html', 'http', 'xml', 'xmlrpc',
+              # Kokoro isn't shipped; without these kokoro_tts reports it missing.
+              'kokoro_onnx', 'onnxruntime', 'phonemizer', 'espeakng_loader'],
     noarchive=False,
 )
 

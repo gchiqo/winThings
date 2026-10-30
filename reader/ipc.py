@@ -22,6 +22,7 @@ from common.paths import data_path
 
 PORT_FILE = "control.json"
 TIMEOUT = 1.5
+MAX_REQUEST_CHARS = 64 * 1024
 
 
 def _port_file(app):
@@ -67,9 +68,11 @@ class ControlServer:
             with conn:
                 conn.settimeout(TIMEOUT)
                 try:
-                    line = conn.makefile("r", encoding="utf-8").readline()
+                    line = conn.makefile("r", encoding="utf-8").readline(MAX_REQUEST_CHARS)
                     request = json.loads(line or "{}")
-                    if request.get("token") != self.token:
+                    token = request.get("token")
+                    if not (isinstance(token, str)
+                            and secrets.compare_digest(token, self.token)):
                         reply = {"ok": False, "error": "bad token"}
                     else:
                         result = self.handler(request.get("cmd", ""),

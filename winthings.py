@@ -54,7 +54,7 @@ def running(app):
         import winerror
     except ImportError:
         return False
-    handle = win32event.CreateMutex(None, False, f"Global\\WinThings.{app}")
+    handle = win32event.CreateMutex(None, False, f"Local\\WinThings.{app}")
     exists = win32api.GetLastError() == winerror.ERROR_ALREADY_EXISTS
     win32api.CloseHandle(handle)
     return exists
