@@ -17,6 +17,9 @@ sounddevice>=0.4.6    # in-process PCM playback (avoids needing ffmpeg)
 numpy>=1.24           # PCM buffer handling for sounddevice
 comtypes>=1.4         # UI Automation selection capture (no clipboard)
 kokoro-onnx>=0.6      # Kokoro engine (ONNX Runtime, no PyTorch); model files: reader/README.md
+winrt-runtime>=3.0                     # Start with Windows inside the MSIX (StartupTask);
+winrt-Windows.ApplicationModel>=3.0    # without it the Store build falls back to a
+winrt-Windows.Foundation>=3.0          # virtualized HKCU Run key that never fires
 
 # Transcriber
 faster-whisper>=1.0   # Whisper via CTranslate2; bundles PyAV, so no ffmpeg needed

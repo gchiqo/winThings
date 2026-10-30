@@ -23,7 +23,7 @@
     - Windows SDK  (for makeappx.exe and signtool.exe)
       winget install --id Microsoft.WindowsSDK.10.0.22621
     - PyInstaller
-      pip install pyinstaller
+      uv pip install pyinstaller
     - All reader dependencies already in the .venv
 
   Run from the repo root:
@@ -107,15 +107,10 @@ Copy-Item (Join-Path $StoreDir "Assets") $Staging -Recurse
 $ManifestSrc = Join-Path $StoreDir "AppxManifest.xml"
 $ManifestDst = Join-Path $Staging "AppxManifest.xml"
 $content = Get-Content $ManifestSrc -Raw
-$content = $content -replace 'Version="[^"]*"', "Version=""$Version"""
+# Case-sensitive and whitespace-anchored: only <Identity Version>, not the
+# <?xml version> declaration or TargetDeviceFamily MinVersion.
+$content = $content -creplace '(?<=\sVersion=")[^"]*', $Version
 Set-Content $ManifestDst $content -Encoding UTF8
-
-# Sanity check: warn if publisher is still a placeholder
-if ($content -match "REPLACE_WITH_PARTNER_CENTER_PUBLISHER_ID") {
-    Write-Warning "AppxManifest.xml still contains a placeholder Publisher ID."
-    Write-Warning "Update store\AppxManifest.xml with your real Partner Center Publisher ID."
-    Write-Warning "Continuing — this build is for testing only."
-}
 
 Write-Host "  Staging: $Staging" -ForegroundColor Green
 
@@ -134,20 +129,26 @@ Write-Host "  Package: $OutMsix" -ForegroundColor Green
 # ---------------------------------------------------------------------------
 if ($SignForTesting) {
     Write-Host "`n[+] Signing with a local test certificate..." -ForegroundColor Yellow
-    $SignTool = Find-WinSdkTool "signtool.exe"
-    $CertPfx  = Join-Path $StoreDir "TestCert.pfx"
-    $CertPass = "test"
+    $SignTool  = Find-WinSdkTool "signtool.exe"
+    $CertPfx   = Join-Path $StoreDir "TestCert.pfx"
+    $CertPass  = "test"
+    $CertPwd   = ConvertTo-SecureString -String $CertPass -Force -AsPlainText
+    # signtool refuses unless the cert subject equals the manifest Publisher.
+    $Publisher = ([xml]$content).Package.Identity.Publisher
 
+    if (Test-Path $CertPfx) {
+        $existing = (Get-PfxData -FilePath $CertPfx -Password $CertPwd).EndEntityCertificates[0]
+        if ($existing.Subject -ne $Publisher) { Remove-Item $CertPfx }
+    }
     if (-not (Test-Path $CertPfx)) {
-        Write-Host "  Generating self-signed test certificate..." -ForegroundColor Cyan
+        Write-Host "  Generating self-signed test certificate for $Publisher ..." -ForegroundColor Cyan
         $cert = New-SelfSignedCertificate `
-            -Type Custom -Subject "CN=Giorgi Chikovani" `
+            -Type Custom -Subject $Publisher `
             -KeyUsage DigitalSignature `
             -FriendlyName "ReadSelected Test" `
             -CertStoreLocation "Cert:\CurrentUser\My" `
             -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
-        $pwd = ConvertTo-SecureString -String $CertPass -Force -AsPlainText
-        Export-PfxCertificate -Cert $cert -FilePath $CertPfx -Password $pwd | Out-Null
+        Export-PfxCertificate -Cert $cert -FilePath $CertPfx -Password $CertPwd | Out-Null
         Write-Host "  Certificate saved to $CertPfx" -ForegroundColor Green
         Write-Host "  IMPORTANT: Install this cert as a Trusted Root CA (or Trusted People)"
         Write-Host "  before sideloading.  Run once in an admin PowerShell:"

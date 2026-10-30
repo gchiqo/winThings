@@ -15,11 +15,9 @@ for path in (REPO, HERE):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-# In a PyInstaller one-folder bundle the data directories (piper/, voices/,
-# kokoro/) are placed next to the .exe, not next to __file__ (which resolves
-# into _internal/). BUNDLE_DIR always points to the right base so submodules
-# can find bundled assets in both the dev and packaged layouts.
+# PyInstaller 6 puts bundled data (piper/, voices/) in _internal/ beside the
+# exe, and sys._MEIPASS points there.
 if getattr(sys, 'frozen', False):
-    BUNDLE_DIR = os.path.dirname(os.path.abspath(sys.executable))
+    BUNDLE_DIR = sys._MEIPASS
 else:
     BUNDLE_DIR = HERE

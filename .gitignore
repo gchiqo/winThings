@@ -12,6 +12,14 @@ reader/kokoro/
 *.onnx
 *.onnx.json
 
+# MSIX build outputs (store/build_msix.ps1)
+build/
+dist/
+msix_staging/
+store/Assets/
+store/TestCert.pfx
+*.msix
+
 # Local state lives in %APPDATA%\WinThings, but don't catch strays
 *.db
 *.log

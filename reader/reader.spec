@@ -5,8 +5,8 @@
 #   pyinstaller reader/reader.spec
 #
 # Output: dist/reader/  — the entire folder becomes the MSIX package content.
-# The PyInstaller one-folder layout keeps piper.exe, voices/, and kokoro/
-# next to reader.exe so BUNDLE_DIR in bootstrap.py resolves them correctly.
+# The PyInstaller one-folder layout keeps piper.exe and voices/ next to
+# reader.exe so BUNDLE_DIR in bootstrap.py resolves them correctly.
 
 import os
 
@@ -15,16 +15,15 @@ REPO_DIR = os.path.dirname(SPEC_DIR)                 # …/winThings/
 
 piper_dir  = os.path.join(SPEC_DIR, 'piper')
 voices_dir = os.path.join(SPEC_DIR, 'voices')
-kokoro_dir = os.path.join(SPEC_DIR, 'kokoro')
 assets_dir = os.path.join(REPO_DIR, 'assets')
 
+# reader/kokoro is deliberately left out: Kokoro isn't shipped in the Store
+# build yet, and without its files settings.py hides the Engine picker.
 datas = []
 if os.path.isdir(piper_dir):
     datas.append((piper_dir, 'piper'))
 if os.path.isdir(voices_dir):
     datas.append((voices_dir, 'voices'))
-if os.path.isdir(kokoro_dir):
-    datas.append((kokoro_dir, 'kokoro'))
 
 # customtkinter ships theme JSON/image files that PyInstaller doesn't auto-detect.
 try:
@@ -56,9 +55,9 @@ a = Analysis(
         # system info
         'psutil', 'psutil._pswindows',
         # numeric
-        'numpy', 'numpy.core._methods', 'numpy.lib.format',
-        # winrt (optional, used by autostart in MSIX mode)
-        'winrt.windows.applicationmodel',
+        'numpy', 'numpy.lib.format',
+        # winrt: Start with Windows via StartupTask in the MSIX
+        'winrt.windows.applicationmodel', 'winrt.windows.foundation',
     ],
     hookspath=[],
     hooksconfig={},

@@ -4,9 +4,9 @@
   Developer: Giorgi Chikovani
 
   BEFORE BUILDING:
-  1. Identity Name and Publisher must match Partner Center > (app) >
-     Product management > Product identity EXACTLY (Package/Identity/Name and
-     Package/Identity/Publisher). The values below are placeholders until then.
+  1. Identity Name, Publisher and PublisherDisplayName match Partner Center >
+     Read Selected > Product management > Product identity (Store ID 9NVSF1K5TRHP).
+     Don't change them.
   2. Bump Version for every Store submission (the last two numbers can stay 0).
   3. Run store\make_assets.py to generate Assets\ before packaging.
 -->
@@ -19,7 +19,7 @@
 
   <Identity
     Name="GiorgiChikovani.ReadSelected"
-    Publisher="CN=db04b614-fe6c-44b6-87b9-b975ca830697"
+    Publisher="CN=4EE59C24-1EF0-43DA-A94B-3A0B79822BD3"
     Version="1.0.0.0"
     ProcessorArchitecture="x64" />
 
