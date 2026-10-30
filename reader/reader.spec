@@ -87,6 +87,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=os.path.join(assets_dir, 'reader.ico'),
+    version=os.path.join(SPEC_DIR, 'version_info.txt'),
 )
 
 coll = COLLECT(
