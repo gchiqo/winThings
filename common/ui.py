@@ -87,8 +87,11 @@ _drain = pump  # kept: apps written against the original private name
 class Row(ctk.CTkFrame):
     """Label on the left, control on the right."""
 
+    LABEL_WIDTH = 190  # one label column for every row, so the controls line up
+
     def __init__(self, parent, label, hint=None):
         super().__init__(parent, fg_color="transparent")
+        self.grid_columnconfigure(0, minsize=self._apply_widget_scaling(self.LABEL_WIDTH))
         self.grid_columnconfigure(1, weight=1)
         text = ctk.CTkLabel(
             self, text=label, anchor="w",
@@ -113,6 +116,7 @@ class SettingsWindow(ctk.CTk):
     APP = "winthings"
     TITLE = "WinThings"
     WIDTH = 480
+    HEIGHT = 640
 
     def __init__(self, config, on_change=None):
         theme.apply(ctk)
@@ -122,7 +126,8 @@ class SettingsWindow(ctk.CTk):
         self._loading = True
 
         self.title(self.TITLE)
-        self.geometry(f"{self.WIDTH}x640")
+        height = min(self.HEIGHT, self.winfo_screenheight() - 80)
+        self.geometry(f"{self.WIDTH}x{height}")
         self.minsize(self.WIDTH, 400)
 
         header = ctk.CTkFrame(self, fg_color="transparent")
@@ -255,8 +260,9 @@ class SettingsWindow(ctk.CTk):
         entry.bind("<Return>", commit)
         return entry
 
-    def add_hotkey(self, label, key, hint=None, on_set=None):
-        """Click-to-record hotkey field — no typing accelerator syntax."""
+    def add_hotkey(self, label, key, hint=None, on_set=None, validate=None):
+        """Click-to-record hotkey field — no typing accelerator syntax.
+        validate(spec) may return a message to refuse a combination."""
         row = self._row(label, hint)
         button = ctk.CTkButton(
             row, text=pretty(self.config_obj[key]),
@@ -270,7 +276,12 @@ class SettingsWindow(ctk.CTk):
             state["cancel"] = None
 
             def apply():
-                if spec and is_valid(spec):
+                refused = validate(normalize(spec)) if (validate and spec
+                                                        and is_valid(spec)) else None
+                if refused:
+                    button.configure(text=pretty(self.config_obj[key]))
+                    self.flash(refused, error=True)
+                elif spec and is_valid(spec):
                     self._commit(key, normalize(spec))
                     button.configure(text=pretty(spec))
                     if on_set:

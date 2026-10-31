@@ -170,6 +170,7 @@ def capture(timeout=0.6, settle=0.05, wait_for_release=True, use_uia=True):
             return text
     else:
         reason = "disabled"
+    _last_range["text"] = None  # whatever comes next has no on-screen position
     if reason.startswith("terminal") or _terminal_window():
         log.info("selection: no Ctrl+C in a terminal (uia: %s) app=%s", reason, app)
         return ""
@@ -255,15 +256,43 @@ class _UiaWorker:
         if self._error:
             return "", self._error
         reply = queue.Queue(maxsize=1)
+
+        def job(auto, uia):
+            try:
+                result = _read_with_retry(auto, uia)
+            finally:
+                self._busy.clear()
+            try:
+                reply.put_nowait(result)
+            except queue.Full:
+                pass
+
         with self._lock:  # hotkey and tray can both ask at once
             if self._busy.is_set():
                 return "", "busy"
             self._busy.set()
-            self._jobs.put(reply)
+            self._jobs.put(job)
         try:
             return reply.get(timeout=deadline)
         except queue.Empty:
             return "", "timeout"
+
+    def submit(self, fn, on_result):
+        """Run fn(auto, uia) on the worker; on_result(value, or None on any
+        failure) is called there too, so it must hand off to its own thread."""
+        self.start()
+        if self._error:
+            on_result(None)
+            return
+
+        def job(auto, uia):
+            try:
+                value = fn(auto, uia)
+            except Exception:
+                value = None
+            on_result(value)
+
+        self._jobs.put(job)
 
     def _run(self):
         try:
@@ -275,15 +304,11 @@ class _UiaWorker:
             return
         self._ready.set()
         while True:
-            reply = self._jobs.get()
+            job = self._jobs.get()
             try:
-                result = _read_with_retry(auto, uia)
-            finally:
-                self._busy.clear()
-            try:
-                reply.put_nowait(result)
-            except queue.Full:
-                pass
+                job(auto, uia)
+            except Exception:
+                log.warning("UI Automation job failed", exc_info=True)
 
     @staticmethod
     def _load():
@@ -406,18 +431,68 @@ def _read_selection(auto, uia):
         return "", "terminal" if terminal else "no-textpattern", framework
 
     ranges = pattern.GetSelection()
-    parts = []
-    for i in range(ranges.Length if ranges else 0):
-        text = ranges.GetElement(i).GetText(-1)
-        if text:
-            parts.append(text)
+    elements = [ranges.GetElement(i) for i in range(ranges.Length if ranges else 0)]
+    parts = [t for t in (el.GetText(-1) for el in elements) if t]
     text = "\n".join(parts)
     if not text.strip():
+        _last_range.update(text=None, range=None)
         return "", "terminal" if terminal else "empty", framework
+    # One range can be located word by word for in-place highlighting.
+    _last_range.update(text=text if len(elements) == 1 else None,
+                       range=elements[0] if len(elements) == 1 else None)
     return text, ("ok" if hops == 0 else f"ok+{hops}up"), framework
 
 
 _uia = _UiaWorker()
+
+# The last selection read through UI Automation as a single range. Written and
+# its range used only on the worker thread; other threads just compare text.
+_last_range = {"text": None, "range": None}
+
+
+class Source:
+    """Where a UI Automation selection sits on screen, for highlighting words
+    in place. Offsets are characters into the selected text."""
+
+    def __init__(self, rng):
+        self._range = rng
+
+    def _rect_job(self, start, length):
+        def job(auto, uia):
+            r = self._range.Clone()
+            r.MoveEndpointByRange(uia.TextPatternRangeEndpoint_End, r,
+                                  uia.TextPatternRangeEndpoint_Start)
+            if start:
+                r.Move(uia.TextUnit_Character, start)
+            r.MoveEndpointByUnit(uia.TextPatternRangeEndpoint_End,
+                                 uia.TextUnit_Character, length)
+            rects = r.GetBoundingRectangles()
+            if not rects or len(rects) < 4 or rects[2] <= 0 or rects[3] <= 0:
+                return None  # off screen, or the app can't say
+            return tuple(rects[:4])  # left, top, width, height in screen pixels
+        return job
+
+    def rect(self, start, length, on_result):
+        """Screen box of the text at [start, start+length), delivered to
+        on_result on the UI Automation thread (None if unknown)."""
+        _uia.submit(self._rect_job(start, length), on_result)
+
+    def rect_now(self, start, length, timeout=0.5):
+        box = queue.Queue(maxsize=1)
+        _uia.submit(self._rect_job(start, length), box.put)
+        try:
+            return box.get(timeout=timeout)
+        except queue.Empty:
+            return None
+
+
+def source_for(text):
+    """A Source for `text` if it was the last selection read through UI
+    Automation as one range; None otherwise (the Ctrl+C route has no position)."""
+    rng = _last_range["range"]
+    if text and rng is not None and _last_range["text"] == text:
+        return Source(rng)
+    return None
 
 
 def warm_up():

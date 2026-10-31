@@ -4,8 +4,8 @@
 
 .DESCRIPTION
   Steps:
-    1. Runs PyInstaller to produce dist\reader\ (the app bundle).
-    2. Generates Store icon assets via store\make_assets.py.
+    1. Generates Store icon assets and assets\reader.ico via store\make_assets.py.
+    2. Runs PyInstaller to produce dist\reader\ (the app bundle).
     3. Assembles the MSIX staging directory:
          msix_staging\
            reader.exe + all PyInstaller output
@@ -69,11 +69,17 @@ $MakeAppx = Find-WinSdkTool "makeappx.exe"
 Write-Host "makeappx.exe: $MakeAppx" -ForegroundColor Cyan
 
 # ---------------------------------------------------------------------------
-# Step 1: PyInstaller
+# Steps 1-2: icons, then PyInstaller
 # ---------------------------------------------------------------------------
-Write-Host "`n[1/4] Running PyInstaller..." -ForegroundColor Yellow
 $PythonExe = Join-Path $RepoDir ".venv\Scripts\python.exe"
 if (-not (Test-Path $PythonExe)) { $PythonExe = "python" }
+
+# Icons first: PyInstaller embeds assets\reader.ico in reader.exe.
+Write-Host "`n[1/4] Generating Store assets and reader.ico..." -ForegroundColor Yellow
+& $PythonExe (Join-Path $StoreDir "make_assets.py")
+if ($LASTEXITCODE -ne 0) { throw "make_assets.py failed." }
+
+Write-Host "`n[2/4] Running PyInstaller..." -ForegroundColor Yellow
 
 # Generate comtypes' UI Automation wrappers so reader.spec can bundle them.
 & $PythonExe -c "import comtypes.client; comtypes.client.GetModule('UIAutomationCore.dll')"
@@ -86,13 +92,6 @@ if (-not (Test-Path $DistDir)) {
     throw "PyInstaller output not found at $DistDir"
 }
 Write-Host "  Bundle: $DistDir" -ForegroundColor Green
-
-# ---------------------------------------------------------------------------
-# Step 2: Generate Store assets
-# ---------------------------------------------------------------------------
-Write-Host "`n[2/4] Generating Store assets..." -ForegroundColor Yellow
-& $PythonExe (Join-Path $StoreDir "make_assets.py")
-if ($LASTEXITCODE -ne 0) { throw "make_assets.py failed." }
 
 # ---------------------------------------------------------------------------
 # Step 3: Assemble staging directory

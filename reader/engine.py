@@ -122,9 +122,11 @@ class Engine:
         self.on_state = on_state
         self._lock = threading.RLock()
         self._stop = threading.Event()
+        self._paused = threading.Event()
         self._thread = None
         self._proc = None
         self._stream = None
+        self._clock = None  # set by _pump while a stream plays; see position()
 
     # -- setup checks -----------------------------------------------------
     def engine_name(self):
@@ -208,8 +210,33 @@ class Engine:
         with self._lock:
             return self._thread is not None and self._thread.is_alive()
 
+    def is_paused(self):
+        return self._paused.is_set() and self.is_speaking()
+
+    def toggle_pause(self):
+        """Pause or continue the current job: True if now paused, False if
+        playing again, None if nothing is playing."""
+        if not self.is_speaking():
+            self._paused.clear()
+            return None
+        if self._paused.is_set():
+            self._paused.clear()
+            return False
+        self._paused.set()
+        return True
+
+    def position(self):
+        """Seconds into the current stream (lead-in silence included) that are
+        reaching the speaker now, or None when nothing is playing. Counts what
+        the device actually consumed, so it holds still while paused."""
+        clock = self._clock
+        if clock is None:
+            return None
+        return max(0.0, clock["frames"] / clock["rate"] - clock["latency"])
+
     def stop(self):
         """Kill the current job. True if something was actually speaking."""
+        self._paused.clear()
         with self._lock:
             thread = self._thread
             proc, stream = self._proc, self._stream
@@ -239,16 +266,15 @@ class Engine:
         return self._start("stream", text, voice, speed, volume, pause,
                            blocking=blocking, extra=())
 
-    def read_aloud(self, text, on_ready=None, on_done=None, voice=None, speed=None,
+    def read_aloud(self, text, on_segment=None, on_done=None, voice=None, speed=None,
                    volume=None, pause=None, blocking=False):
-        """Reading-mode job: synthesise the whole text to a temp wav first so the
-        overlay can be told the total duration, then play it.
-
-        Piper emits no word alignment, so the overlay estimates word timings from
-        the total duration — which means we have to know it up front, i.e. no
-        streaming for this one path. Same trade-off the GTK overlay made."""
+        """Reading-mode job: each line is rendered whole, then played while the
+        next renders. on_segment(line_index, start, speech_seconds) says where
+        each line sits in the stream, so the overlay can spread that line's
+        words over its real duration (Piper gives no word alignment) and follow
+        position(). on_done() runs once the audio has finished or was stopped."""
         return self._start("render", text, voice, speed, volume, pause,
-                           blocking=blocking, extra=(on_ready, on_done))
+                           blocking=blocking, extra=(on_segment, on_done))
 
     def _start(self, kind, text, voice, speed, volume, pause, blocking, extra):
         """kind is "stream" (play as it synthesises) or "render" (synthesise
@@ -269,7 +295,7 @@ class Engine:
                 voice if voice in ids else self._cfg("kokoro_voice", ""), ids)
             if not vid:
                 return False, "no voices in reader\\kokoro\\voices-v1.0.bin"
-            target = self._stream_kokoro if kind == "stream" else self._kokoro_then_play
+            target = self._stream_kokoro if kind == "stream" else self._read_kokoro
             args = (text, vid, speed, pause, volume) + extra
         else:
             exe = piper_exe(self._cfg("piper_exe", ""))
@@ -279,10 +305,11 @@ class Engine:
             vid, info = self.resolve(voice)
             if not info:
                 return False, "no voices found — see README"
-            target = self._stream_piper if kind == "stream" else self._synth_then_play
+            target = self._stream_piper if kind == "stream" else self._read_piper
             args = (text, exe, info, speech.length_scale(speed), pause, volume) + extra
 
         self._stop.clear()
+        self._paused.clear()
         thread = threading.Thread(target=self._guard, args=(target, args), daemon=True)
         with self._lock:
             self._thread = thread
@@ -365,37 +392,49 @@ class Engine:
                 _reap(state["proc"])
         return None
 
-    def _synth_then_play(self, text, exe, info, ls, pause, volume, on_ready, on_done):
-        """Reading-mode: render the whole selection to PCM up front (the overlay
-        needs the total duration), then play. Rendered one piper process per line
-        for the same reason as _stream_piper — a single invocation over several
-        lines garbles later ones."""
+    def _piper_lines(self, text, exe, info, ls, pause, errors):
+        """(line index, PCM) per prepared line, each through its own piper
+        process for the same reason as _stream_piper."""
         noise_scale, noise_w = self._noise()
-        rate = info["rate"]
         voices = self.voices()
-        try:
-            pcm = bytearray()
-            errors = []
-            for line in (ln for ln in text.split("\n") if ln.strip()):
-                if self._stop.is_set():
-                    return None
-                line_info = self._pick_voice_info(line, voices, info)
-                pcm += self._render_piper_line(exe, line_info, line, ls, pause,
-                                               noise_scale, noise_w, errors)
+        lines = [ln for ln in text.split("\n") if ln.strip()]
+        for i, line in enumerate(lines):
             if self._stop.is_set():
-                return None
-            if not pcm:
+                return
+            line_info = self._pick_voice_info(line, voices, info)
+            pcm = self._render_piper_line(exe, line_info, line, ls, pause,
+                                          noise_scale, noise_w, errors)
+            if pcm and not self._stop.is_set():
+                yield i, pcm
+
+    def _read_piper(self, text, exe, info, ls, pause, volume, on_segment, on_done):
+        errors = []
+        return self._play_lines(self._piper_lines(text, exe, info, ls, pause, errors),
+                                info["rate"], pause, volume, on_segment, on_done, errors)
+
+    def _play_lines(self, lines, rate, pause, volume, on_segment, on_done, errors):
+        """Reading mode: play (index, PCM) lines as they are rendered, telling
+        on_segment where each one starts in the stream and how long its speech
+        lasts (its trailing sentence pause left out), all in seconds."""
+        lead = self._lead_bytes(rate)
+        queued = {"bytes": lead}
+
+        def chunks():
+            for i, pcm in lines:
+                if on_segment:
+                    seconds = len(pcm) / FRAME_BYTES / rate
+                    on_segment(i, queued["bytes"] / FRAME_BYTES / rate,
+                               max(seconds * 0.5, seconds - pause))
+                queued["bytes"] += len(pcm)
+                yield pcm
+
+        try:
+            self._pump(_chunked_reader(chunks()), rate, volume)
+            if queued["bytes"] == lead and not self._stop.is_set():
                 message = (b"".join(errors).decode("utf-8", "replace").strip()
                            or "synthesis failed")
                 self._emit("error", message)
                 return message
-
-            duration = len(pcm) / 2 / float(rate or 1)
-            reader = _bytes_reader(bytes(pcm))
-            # Tell the overlay only once the device is actually running, so its
-            # word clock isn't offset by the stream-open latency.
-            self._pump(reader, rate, volume,
-                       on_start=(lambda: on_ready(duration)) if on_ready else None)
         finally:
             if on_done:
                 on_done()
@@ -421,8 +460,8 @@ class Engine:
 
     # -- Kokoro -----------------------------------------------------------
     def _kokoro_lines(self, text, vid, speed, pause, errors):
-        """PCM (int16, 24 kHz) per prepared line, synthesised one at a time so
-        a caller streaming it plays line n while line n+1 is being made.
+        """(line index, PCM int16 24 kHz) per prepared line, synthesised one at
+        a time so a caller streaming it plays line n while line n+1 is made.
 
         Stops between lines when stop() is called. A Kokoro inference itself
         can't be interrupted, but each is one sentence-sized line (0.25-0.55 s
@@ -430,7 +469,8 @@ class Engine:
         """
         silence = b"\x00\x00" * int(kokoro_tts.SAMPLE_RATE * pause)
         piper = self._piper_for_georgian()
-        for line in (ln for ln in text.split("\n") if ln.strip()):
+        lines = [ln for ln in text.split("\n") if ln.strip()]
+        for i, line in enumerate(lines):
             if self._stop.is_set():
                 return
             if piper and speech.detect_script(line) == "ka":
@@ -444,7 +484,7 @@ class Engine:
                 if pcm:
                     pcm += silence  # Piper's --sentence_silence, by hand
             if pcm and not self._stop.is_set():
-                yield pcm
+                yield i, pcm
 
     def _piper_for_georgian(self):
         """(exe, voice info, noise) for Georgian lines in Kokoro mode, or None
@@ -463,34 +503,22 @@ class Engine:
         """Kokoro counterpart of _stream_piper: same player, 24 kHz."""
         errors = []
         lines = self._kokoro_lines(text, vid, speed, pause, errors)
-        self._pump(_chunked_reader(lines), kokoro_tts.SAMPLE_RATE, volume)
+        self._pump(_chunked_reader(pcm for _, pcm in lines),
+                   kokoro_tts.SAMPLE_RATE, volume)
         return None
 
-    def _kokoro_then_play(self, text, vid, speed, pause, volume, on_ready, on_done):
-        """Kokoro counterpart of _synth_then_play (reading mode): render every
-        line, then play, so the overlay knows the total duration up front."""
-        rate = kokoro_tts.SAMPLE_RATE
-        try:
-            errors = []
-            pcm = bytearray()
-            for chunk in self._kokoro_lines(text, vid, speed, pause, errors):
-                pcm += chunk
-            if self._stop.is_set():
-                return None
-            if not pcm:
-                message = (b"".join(errors).decode("utf-8", "replace").strip()
-                           or "synthesis failed")
-                self._emit("error", message)
-                return message
-            duration = len(pcm) / 2 / float(rate)
-            self._pump(_bytes_reader(bytes(pcm)), rate, volume,
-                       on_start=(lambda: on_ready(duration)) if on_ready else None)
-        finally:
-            if on_done:
-                on_done()
-        return None
+    def _read_kokoro(self, text, vid, speed, pause, volume, on_segment, on_done):
+        """Kokoro counterpart of _read_piper (reading mode)."""
+        errors = []
+        return self._play_lines(self._kokoro_lines(text, vid, speed, pause, errors),
+                                kokoro_tts.SAMPLE_RATE, pause, volume,
+                                on_segment, on_done, errors)
 
-    def _pump(self, read, rate, volume, on_start=None):
+    def _lead_bytes(self, rate):
+        # Tunable: a slower-waking headset may need more lead-in.
+        return int(rate * self._cfg_num("lead_in_silence", LEAD_IN_SECONDS)) * FRAME_BYTES
+
+    def _pump(self, read, rate, volume):
         """Feed PCM from `read(nbytes)` into the output device until it dries up.
 
         A callback stream, not blocking writes: the device pulls from a shared
@@ -506,23 +534,29 @@ class Engine:
         buf_lock = threading.Lock()
         producing = {"on": True}
         drained = threading.Event()
-        started = {"real": False}
+        paused = self._paused
+        # Frames of real stream data the device has taken; zero-fill doesn't count.
+        clock = {"frames": 0, "rate": rate, "latency": 0.0}
 
         def callback(outdata, frames, _time, _status):
             need = frames * FRAME_BYTES
+            if paused.is_set():
+                # Keep the device running on silence (a Bluetooth link stays
+                # awake) and leave the buffer where it is.
+                outdata[:] = b"\x00" * need
+                return
             with buf_lock:
                 take = min(need, len(buf))
                 outdata[:take] = buf[:take]
                 del buf[:take]
                 empty = not buf
+            clock["frames"] += take // FRAME_BYTES
             if take < need:
                 outdata[take:] = b"\x00" * (need - take)  # silence, not garbage
                 if not producing["on"] and empty:
                     drained.set()
                     raise sd.CallbackStop
 
-        # Lead-in / tail-out are tunable: a slower-waking headset may need more.
-        lead = self._cfg_num("lead_in_silence", LEAD_IN_SECONDS)
         tail = self._cfg_num("tail_out_silence", TAIL_OUT_SECONDS)
 
         # Seed the lead-in silence and open the device now, before any speech is
@@ -530,11 +564,13 @@ class Engine:
         # synthesising. The callback zero-fills anyway, so if synthesis outruns
         # the lead-in the extra silence is seamless.
         with buf_lock:
-            buf += b"\x00" * (int(rate * lead) * FRAME_BYTES)
+            buf += b"\x00" * self._lead_bytes(rate)
         stream = None
         odd = b""  # a pipe read can split a sample across two chunks
         try:
             stream = self._open_stream(sd, rate, callback)
+            clock["latency"] = float(stream.latency or 0.0)
+            self._clock = clock
             while not self._stop.is_set():
                 data = read(CHUNK_BYTES)
                 if not data:
@@ -544,10 +580,6 @@ class Engine:
                 scaled = scale_pcm(data, volume)
                 with buf_lock:
                     buf += scaled
-                if not started["real"]:
-                    started["real"] = True
-                    if on_start:
-                        on_start()  # real audio queued: start the overlay clock
 
             if not self._stop.is_set():
                 # Trailing silence so a Bluetooth close drops silence, not speech.
@@ -567,6 +599,7 @@ class Engine:
                 raise  # a real device error; a stop() aborting us is expected
         finally:
             producing["on"] = False
+            self._clock = None
             with self._lock:
                 self._stream = None
             if stream is not None:
@@ -590,20 +623,6 @@ def _feed(proc, text):
         proc.stdin.close()
     except (OSError, ValueError):
         pass  # piper was killed mid-write; the stop path already handled it
-
-
-def _bytes_reader(data):
-    """A read(n) over an in-memory PCM buffer, so _pump can play a pre-rendered
-    clip the same way it plays a live stream."""
-    pos = {"i": 0}
-
-    def read(n):
-        i = pos["i"]
-        chunk = data[i:i + n]
-        pos["i"] = i + n
-        return chunk
-
-    return read
 
 
 def _chunked_reader(chunks):

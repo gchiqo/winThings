@@ -28,12 +28,13 @@ that process over a loopback socket (ipc.py) instead of a PID file.
 import argparse
 import logging
 import logging.handlers
+import os
 import sys
 import threading
-import time
 
 import bootstrap  # noqa: F401  (repo root on sys.path)
 
+import brand
 import engine
 import foreground
 import ipc
@@ -45,7 +46,7 @@ from settings import ReaderSettings, status_for
 
 from common import autostart, singleton, theme
 from common.config import Config
-from common.hotkey import HotkeyManager
+from common.hotkey import HotkeyManager, normalize, pretty
 from common.paths import log_path
 from common import tray as tray_mod
 from common.tray import Tray
@@ -68,8 +69,10 @@ DEFAULTS = {
     "speed": 1.0,                # multiplier; piper wants its inverse
     "volume": 1.0,               # applied to the PCM ourselves
     "sentence_silence": 0.2,     # seconds of silence between sentences
-    "reading_mode": False,       # fullscreen word-highlighting overlay
-    "hotkey": "ctrl+shift+a",
+    "reading_mode": False,       # highlight each word as it is spoken
+    "highlight_style": "inplace",  # "inplace" (on the selected text) or "fullscreen"
+    "hotkey": "ctrl+shift+a",            # read the selection / stop
+    "pause_hotkey": "ctrl+shift+alt+a",  # pause / continue
     "autostart": False,
     "voices_dir": "",            # blank -> reader\voices
     "piper_exe": "",             # blank -> reader\piper\piper.exe, then PATH
@@ -99,7 +102,6 @@ class ReaderApp:
         self.tray = None
         self.window = None
         self.overlay = None
-        self._overlay_t0 = 0.0
         self._engine_name = self.engine.engine_name()
 
     # -- lifecycle --------------------------------------------------------
@@ -112,8 +114,10 @@ class ReaderApp:
         self.rebind()
         tray_mod.set_app_id("WinThings.Reader")
         self.tray = (
-            Tray(APP, "Read Selected", "reader", theme.ACCENT)
+            Tray(APP, "Read Selected", "reader", theme.ACCENT,
+                 image=brand.icon_image(256))
             .add("Read selection", self.read_selection, default=True)
+            .add("Pause / continue", self.toggle_pause)
             .add("Stop", self.stop)
             .add("Settings", self.open_settings)
             .separator()
@@ -161,6 +165,11 @@ class ReaderApp:
         also act on the combo — otherwise e.g. an app's own Ctrl+Shift+A could
         change the selection out from under the Ctrl+C we are about to send."""
         self.hotkeys.bind("read", self.config["hotkey"], self.toggle, suppress=True)
+        pause = normalize(self.config["pause_hotkey"])
+        if pause and pause != normalize(self.config["hotkey"]):
+            self.hotkeys.bind("pause", pause, self.toggle_pause, suppress=True)
+        else:
+            self.hotkeys.unbind("pause")
 
     def set_autostart(self, enabled):
         autostart.set_enabled("WinThingsReader", __file__, enabled)
@@ -195,6 +204,12 @@ class ReaderApp:
         """Same, but started from our own UI, so focus has to go back first."""
         self._in_background(self._read_job, True)
 
+    def toggle_pause(self):
+        """Pause hotkey: pause the current reading, or continue where it was."""
+        paused = self.engine.toggle_pause()
+        if paused is not None and self.overlay is not None:
+            call_on_ui_thread(self._overlay_paused, paused)
+
     def stop(self):
         stopped = self.engine.stop()
         if self.overlay is not None:
@@ -210,7 +225,15 @@ class ReaderApp:
         if not text:
             return False
         if self.config["reading_mode"] and self.window is not None:
-            call_on_ui_thread(self._start_reading_mode, text, voice, speed)
+            source, spans = None, None
+            if self.config["highlight_style"] != "fullscreen":
+                source = selection.source_for(raw)
+                spans = overlay.word_spans(raw, text) if source else None
+                # Highlight in place only where the app can say where the
+                # words are; otherwise fall back to the full-screen panel.
+                if source and not (spans and source.rect_now(*spans[0])):
+                    source = None
+            call_on_ui_thread(self._start_reading_mode, text, voice, speed, source, spans)
             return True
         ok, detail = self.engine.speak(text, voice=voice, speed=speed)
         if not ok:
@@ -247,36 +270,50 @@ class ReaderApp:
             self.notify(detail)
 
     # -- reading mode (all of this runs on the Tk thread) -----------------
-    def _start_reading_mode(self, text, voice, speed):
+    def _start_reading_mode(self, text, voice, speed, source=None, spans=None):
         self.close_overlay()
-        self.overlay = overlay.Overlay(self.window, text, on_close=self._overlay_closed)
+        if source is not None:
+            shown = overlay.InPlace(self.window, text, source, spans,
+                                    on_close=self._overlay_closed)
+        else:
+            shown = overlay.Overlay(self.window, text, on_close=self._overlay_closed)
+        self.overlay = shown
         ok, detail = self.engine.read_aloud(
             text, voice=voice, speed=speed,
-            on_ready=lambda seconds: call_on_ui_thread(self._overlay_begin, seconds),
-            on_done=lambda: call_on_ui_thread(self.close_overlay),
+            on_segment=lambda i, start, seconds: call_on_ui_thread(
+                shown.add_segment, i, start, seconds),
+            # Bound to this overlay: a job being replaced must not close the new one.
+            on_done=lambda: call_on_ui_thread(self._reading_done, shown),
         )
         if not ok:
             self.close_overlay()
             self.notify(detail)
-
-    def _overlay_begin(self, duration):
-        if self.overlay is None:
             return
-        self.overlay.begin(duration)
-        self._overlay_t0 = time.monotonic()
         self.window.after(overlay.TICK_MS, self._overlay_tick)
 
     def _overlay_tick(self):
+        """Follow the audio the speaker is actually playing (paused included);
+        the overlay closes when the engine reports the reading done."""
         if self.overlay is None or self.overlay.closed:
             return
-        if not self.overlay.set_progress(time.monotonic() - self._overlay_t0):
-            self.close_overlay()
-            return
+        position = self.engine.position()
+        if position is not None:
+            self.overlay.set_progress(position)
         self.window.after(overlay.TICK_MS, self._overlay_tick)
+
+    def _overlay_paused(self, paused):
+        if self.overlay is not None:
+            self.overlay.set_paused(
+                paused, f"press {pretty(self.config['pause_hotkey'])} to continue")
+
+    def _reading_done(self, shown):
+        if self.overlay is shown:
+            self.close_overlay()
 
     def close_overlay(self):
         current, self.overlay = self.overlay, None
         if current is not None:
+            current.on_close = None  # closed by us, not dismissed: leave the audio be
             current.close()
 
     def _overlay_closed(self):
@@ -339,6 +376,10 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     config = Config(APP, DEFAULTS)
+    # No config file yet: no setting was ever changed (Start with Windows
+    # included), so this is a manual launch. Show the window rather than only a
+    # tray icon that Windows 11 hides in the overflow.
+    first_run = not os.path.exists(config.path)
 
     if args.list_voices:
         for vid in speech.discover_voices(config["voices_dir"]):
@@ -381,7 +422,7 @@ def main(argv=None):
     log.info("reader starting")
 
     app = ReaderApp(config)
-    app.start(open_settings=args.settings)
+    app.start(open_settings=args.settings or first_run)
     try:
         app.window.mainloop()
     except Exception:

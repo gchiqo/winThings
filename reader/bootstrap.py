@@ -19,5 +19,7 @@ for path in (REPO, HERE):
 # exe, and sys._MEIPASS points there.
 if getattr(sys, 'frozen', False):
     BUNDLE_DIR = sys._MEIPASS
+    ICON_PATH = os.path.join(BUNDLE_DIR, "assets", "reader.ico")
 else:
     BUNDLE_DIR = HERE
+    ICON_PATH = os.path.join(REPO, "assets", "reader.ico")

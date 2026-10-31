@@ -33,7 +33,7 @@ def command_for(script):
     return f'"{_pythonw()}" "{os.path.abspath(script)}"'
 
 
-def _in_msix_package():
+def in_msix_package():
     """True when running inside an MSIX container (GetCurrentPackageFullName)."""
     try:
         import ctypes
@@ -81,7 +81,7 @@ def _msix_set_enabled(on):
 
 
 def is_enabled(name):
-    if _in_msix_package():
+    if in_msix_package():
         result = _msix_is_enabled()
         if result is not None:
             return result
@@ -95,7 +95,7 @@ def is_enabled(name):
 
 
 def enable(name, script):
-    if _in_msix_package():
+    if in_msix_package():
         if _msix_set_enabled(True):
             return True
     if getattr(sys, 'frozen', False):
@@ -112,7 +112,7 @@ def enable(name, script):
 
 
 def disable(name):
-    if _in_msix_package():
+    if in_msix_package():
         _msix_set_enabled(False)
     import winreg
     try:

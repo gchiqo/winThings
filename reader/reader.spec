@@ -24,6 +24,7 @@ if os.path.isdir(piper_dir):
     datas.append((piper_dir, 'piper'))
 if os.path.isdir(voices_dir):
     datas.append((voices_dir, 'voices'))
+datas.append((os.path.join(assets_dir, 'reader.ico'), 'assets'))  # window icon
 
 # customtkinter ships theme JSON/image files that PyInstaller doesn't auto-detect.
 try:

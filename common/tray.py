@@ -1,8 +1,9 @@
 """pystray wrapper: one tray icon per app, drawn at runtime.
 
 Icons are drawn with Pillow rather than shipped as files so there's no asset to
-lose. Each app names an icon "kind" ("reader", "clipboard") and gets art that
-says what it does; an unknown kind falls back to a lettered badge.
+lose. Each app names an icon "kind" ("clipboard", "transcriber") and gets art
+that says what it does, or passes its own image; an unknown kind falls back to
+a lettered badge.
 
 set_app_id() gives the process a real Windows application identity, so the tray
 and its settings page label the icon by the app instead of "Python" (the
@@ -43,18 +44,6 @@ def _badge(color):
     return img
 
 
-def _draw_reader(img, color):
-    """A speaker with sound waves — 'reads aloud'."""
-    d = ImageDraw.Draw(img)
-    cy = _HI_RES // 2
-    d.rectangle([56, cy - 26, 86, cy + 26], fill=WHITE)
-    d.polygon([(86, cy - 26), (128, cy - 58), (128, cy + 58), (86, cy + 26)],
-              fill=WHITE)
-    for i, r in enumerate((34, 58, 82)):
-        d.arc([150 - r, cy - r, 150 + r, cy + r], start=-45, end=45,
-              fill=WHITE, width=12 - i * 2)
-
-
 def _draw_clipboard(img, color):
     """A clipboard with a search magnifier — 'searchable clipboard'."""
     d = ImageDraw.Draw(img)
@@ -86,8 +75,7 @@ def _draw_transcriber(img, color):
         d.rounded_rectangle([166, y, 166 + w, y + 12], radius=6, fill=WHITE)
 
 
-_ART = {"reader": _draw_reader, "clipboard": _draw_clipboard,
-        "transcriber": _draw_transcriber}
+_ART = {"clipboard": _draw_clipboard, "transcriber": _draw_transcriber}
 
 
 def _draw_letter(img, glyph):
@@ -118,7 +106,15 @@ def make_icon(kind, color=theme.ACCENT, size=64):
 
 def set_app_id(app_id):
     """Give this process an explicit AppUserModelID so Windows labels the tray
-    icon by the app, not by the pythonw.exe it runs under. Best-effort."""
+    icon by the app, not by the pythonw.exe it runs under. Best-effort.
+
+    Skipped inside an MSIX package: the package already has an identity, and
+    overriding it makes the taskbar show the window icon instead of the
+    package logo and breaks pinning."""
+    from .autostart import in_msix_package
+
+    if in_msix_package():
+        return
     try:
         import ctypes
 
@@ -135,11 +131,12 @@ class Tray:
     free for Tk (which insists on being the main thread).
     """
 
-    def __init__(self, app_name, title, kind, color=theme.ACCENT):
+    def __init__(self, app_name, title, kind, color=theme.ACCENT, image=None):
         self.app_name = app_name
         self.title = title
         self._kind = kind
         self._color = color
+        self._image = image
         self._items = []
         self._icon = None
         self._thread = None
@@ -180,7 +177,8 @@ class Tray:
 
         self._icon = pystray.Icon(
             self.app_name,
-            icon=make_icon(self._kind, self._color),
+            icon=(self._image.resize((64, 64), Image.LANCZOS) if self._image
+                  else make_icon(self._kind, self._color)),
             title=self.title,
             menu=self._build_menu(),
         )
