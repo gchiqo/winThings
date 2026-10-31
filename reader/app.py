@@ -276,7 +276,12 @@ class ReaderApp:
             shown = overlay.InPlace(self.window, text, source, spans,
                                     on_close=self._overlay_closed)
         else:
-            shown = overlay.Overlay(self.window, text, on_close=self._overlay_closed)
+            # In-place was wanted but the app can't say where its text is (VS
+            # Code's editor, anything read via Ctrl+C): a corner panel then,
+            # not a full-screen takeover.
+            compact = self.config["highlight_style"] != "fullscreen"
+            shown = overlay.Overlay(self.window, text, on_close=self._overlay_closed,
+                                    compact=compact)
         self.overlay = shown
         ok, detail = self.engine.read_aloud(
             text, voice=voice, speed=speed,

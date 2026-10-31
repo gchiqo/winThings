@@ -183,9 +183,10 @@ class WordTimeline:
 
 
 class Overlay(tk.Toplevel):
-    """Full-screen word-highlighting panel. Driven by set_progress(position)."""
+    """Word-highlighting panel, full screen or (compact) in the corner of the
+    monitor. Driven by set_progress(position)."""
 
-    def __init__(self, master, text, on_close=None):
+    def __init__(self, master, text, on_close=None, compact=False):
         super().__init__(master, bg=BG)
         self.on_close = on_close
         self.timeline = WordTimeline(text)
@@ -234,10 +235,13 @@ class Overlay(tk.Toplevel):
                 widget.bind(key, lambda _e: self.close())
             widget.bind("<Button-3>", lambda _e: self.close())
 
-        self._resize(big=True)
+        self._resize(big=not compact)
         self.lift()
-        self.focus_force()
-        self.text.focus_set()
+        if not compact:
+            # Full screen takes the keyboard so Esc / Q close it; the compact
+            # panel leaves the focus with the app the text came from.
+            self.focus_force()
+            self.text.focus_set()
 
     # -- geometry ---------------------------------------------------------
     def _resize(self, big):
@@ -252,7 +256,9 @@ class Overlay(tk.Toplevel):
             w, h = int(SMALL_W * scale), int(SMALL_H * scale)
             margin = int(SMALL_MARGIN * scale)
             self.geometry(f"{w}x{h}+{mx + mw - w - margin}+{my + mh - h - margin}")
-            self.text.configure(font=(theme.FONT, FONT_SMALL), padx=24, pady=18)
+            # Side padding wide enough that lines clear the ✕ in the corner.
+            self.text.configure(font=(theme.FONT, FONT_SMALL),
+                                padx=int(56 * scale), pady=int(18 * scale))
             self.text.tag_configure("current", font=(theme.FONT, FONT_SMALL, "bold"))
         self._scroll_to(self.timeline.current)
 

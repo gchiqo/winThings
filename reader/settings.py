@@ -40,8 +40,8 @@ HINT_VOICE = {
 HINT_SPEED = "1.0× is normal speed"
 HINT_READ_KEY = "Select text in any app, then press this. Press it again to stop"
 HINT_PAUSE_KEY = "Pause in the middle and continue from the same word"
-HINT_HIGHLIGHT = ("Marks each word as it is spoken. Apps that can't say where their "
-                  "text is get the full-screen view instead")
+HINT_HIGHLIGHT = ("Marks each word as it is spoken. Where an app hides where its text "
+                  "is (like VS Code's code editor), a small panel in the corner shows it")
 HIGHLIGHT_CHOICES = {  # label -> (reading_mode, highlight_style)
     "Off": (False, None),
     "In the text I selected": (True, "inplace"),
