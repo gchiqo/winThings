@@ -34,7 +34,7 @@
 
 param(
     [switch]$SignForTesting,
-    [string]$Version = "1.0.0.0"
+    [string]$Version = ""   # blank: the Version in store\AppxManifest.xml
 )
 
 Set-StrictMode -Version Latest
@@ -47,6 +47,9 @@ $RepoDir   = Split-Path -Parent $PSScriptRoot      # winThings\
 $StoreDir  = $PSScriptRoot                          # winThings\store\
 $Staging   = Join-Path $RepoDir "msix_staging"
 $DistDir   = Join-Path $RepoDir "dist\reader"
+if (-not $Version) {
+    $Version = ([xml](Get-Content (Join-Path $StoreDir "AppxManifest.xml") -Raw)).Package.Identity.Version
+}
 $OutMsix   = Join-Path $RepoDir "dist\ReadSelected_$Version.msix"
 
 # Find makeappx.exe from the installed Windows SDK

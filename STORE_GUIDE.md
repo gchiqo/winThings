@@ -105,7 +105,7 @@ The script:
 1. Runs PyInstaller → `dist\reader\`
 2. Generates all required Store icons → `store\Assets\`
 3. Assembles → `msix_staging\`
-4. Packages → `dist\ReadSelected_1.0.0.0.msix`
+4. Packages → `dist\ReadSelected_<version>.msix`
 
 **To test locally before uploading:**
 
@@ -116,10 +116,10 @@ Import-PfxCertificate -FilePath 'store\TestCert.pfx' `
   -Password (ConvertTo-SecureString 'test' -Force -AsPlainText)
 
 # Then install the .msix:
-Add-AppxPackage dist\ReadSelected_1.0.0.0.msix
+Add-AppxPackage dist\ReadSelected_<version>.msix
 ```
 
-Or just double-click `dist\ReadSelected_1.0.0.0.msix`.
+Or just double-click `dist\ReadSelected_<version>.msix`.
 
 **To uninstall the test build:**
 
@@ -167,7 +167,7 @@ Get-AppxPackage *ReadSelected* | Remove-AppxPackage
 
 ### 4.5 Packages
 
-Upload the **unsigned** `dist\ReadSelected_1.0.0.0.msix`.
+Upload the **unsigned** `dist\ReadSelected_<version>.msix`.
 Partner Center re-signs the package automatically during certification.
 
 ### 4.6 Submit for certification
@@ -195,19 +195,26 @@ The app will be tested against these policies (all of which it should pass):
 
 ## Versioning for updates
 
-Bump `Version` in `store\AppxManifest.xml` before each submission:
+Before each submission, bump the version in two places:
+
+- `Version` in `store\AppxManifest.xml` (the package version the Store sees)
+- the four version fields in `reader\version_info.txt` (the version shown in
+  `reader.exe`'s Properties)
 
 ```
-1.0.0.0 → 1.1.0.0  (minor feature update)
-1.0.0.0 → 2.0.0.0  (major change)
+1.1.0.0 → 1.1.1.0  (fix)
+1.1.0.0 → 1.2.0.0  (feature update)
+1.1.0.0 → 2.0.0.0  (major change)
 ```
 
-The last two digits (`.0.0`) are reserved; set them to 0.
+The last number is reserved by the Store; keep it 0. Each upload must be
+higher than the last one you submitted.
 
-Then rebuild:
+Then rebuild. The script reads the version from the manifest and writes
+`dist\ReadSelected_<version>.msix`:
 
 ```powershell
-.\store\build_msix.ps1 -Version "1.1.0.0"
+.\store\build_msix.ps1
 ```
 
 ---
