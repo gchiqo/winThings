@@ -74,6 +74,7 @@ DEFAULTS = {
     "hotkey": "ctrl+shift+a",            # read the selection / stop
     "pause_hotkey": "ctrl+shift+alt+a",  # pause / continue
     "autostart": False,
+    "appearance": "system",      # settings window: "system", "light" or "dark"
     "voices_dir": "",            # blank -> reader\voices
     "piper_exe": "",             # blank -> reader\piper\piper.exe, then PATH
     # Silence padding to mask Bluetooth link latency (see engine.py). Raise
@@ -172,7 +173,13 @@ class ReaderApp:
             self.hotkeys.unbind("pause")
 
     def set_autostart(self, enabled):
-        autostart.set_enabled("WinThingsReader", __file__, enabled)
+        """True if Windows accepted it (it refuses to re-enable startup the
+        user turned off in Settings > Apps > Startup)."""
+        return autostart.set_enabled("WinThingsReader", __file__, enabled)
+
+    def autostart_enabled(self):
+        """What Windows will actually do at sign-in, not what config says."""
+        return autostart.is_enabled("WinThingsReader")
 
     def on_config_change(self, _config):
         name = self.engine.engine_name()

@@ -20,7 +20,7 @@
   <Identity
     Name="GiorgiChikovani.ReadSelected"
     Publisher="CN=4EE59C24-1EF0-43DA-A94B-3A0B79822BD3"
-    Version="1.1.0.0"
+    Version="1.2.0.0"
     ProcessorArchitecture="x64" />
 
   <Properties>

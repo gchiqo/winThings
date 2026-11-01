@@ -1,7 +1,7 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 1, 0, 0),
-    prodvers=(1, 1, 0, 0),
+    filevers=(1, 2, 0, 0),
+    prodvers=(1, 2, 0, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -15,12 +15,12 @@ VSVersionInfo(
         '040904B0',
         [StringStruct('CompanyName',      'Giorgi Chikovani'),
          StringStruct('FileDescription',  'Read Selected'),
-         StringStruct('FileVersion',      '1.1.0.0'),
+         StringStruct('FileVersion',      '1.2.0.0'),
          StringStruct('InternalName',     'reader'),
          StringStruct('LegalCopyright',   '\xa9 2026 Giorgi Chikovani'),
          StringStruct('OriginalFilename', 'reader.exe'),
          StringStruct('ProductName',      'Read Selected'),
-         StringStruct('ProductVersion',   '1.1.0.0')])
+         StringStruct('ProductVersion',   '1.2.0.0')])
     ]),
     VarFileInfo([VarStruct('Translation', [0x0409, 1200])])
   ]

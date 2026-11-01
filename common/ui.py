@@ -1,8 +1,10 @@
 """Settings-window scaffolding shared by all three apps.
 
 Gives every app the same shape: title, live status dot, a stack of labelled
-rows (slider / switch / entry / dropdown / hotkey-capture), and a footer for
-actions. Apps subclass SettingsWindow and fill in build().
+rows (slider / switch / checkbox / radio buttons / entry / dropdown /
+hotkey-capture), and buttons. Apps subclass SettingsWindow and fill in build().
+Colours are (light, dark) pairs, so a window follows the appearance mode its
+app picks (APPEARANCE_KEY); without one it stays dark.
 
 Tk must own the main thread, so apps that also run a tray icon or keyboard hook
 should start those as daemon threads and marshal work back with
@@ -19,6 +21,8 @@ import customtkinter as ctk
 from . import theme
 from .hotkey import capture as capture_hotkey, is_valid, normalize, pretty
 from .textinput import fix_unicode_input
+
+P = theme.pair
 
 _ui_queue = queue.Queue()
 
@@ -84,10 +88,22 @@ def pump(widget, interval=50):
 _drain = pump  # kept: apps written against the original private name
 
 
+def _button_colors(style):
+    """Colours for a "primary", "danger" or plain (None) button."""
+    if style == "primary":
+        return {"fg_color": P(theme.ACCENT), "hover_color": P(theme.ACCENT_HOVER),
+                "text_color": "#ffffff"}
+    if style == "danger":
+        return {"fg_color": P(theme.ERROR), "hover_color": P(theme.ERROR_HOVER),
+                "text_color": "#ffffff"}
+    return {"fg_color": P(theme.BG_ELEVATED), "hover_color": P(theme.BG_HOVER),
+            "text_color": P(theme.FG), "border_color": P(theme.BORDER), "border_width": 1}
+
+
 class Row(ctk.CTkFrame):
     """Label on the left, control on the right."""
 
-    LABEL_WIDTH = 190  # one label column for every row, so the controls line up
+    LABEL_WIDTH = 150  # one label column for every row, so the controls line up
 
     def __init__(self, parent, label, hint=None):
         super().__init__(parent, fg_color="transparent")
@@ -95,7 +111,7 @@ class Row(ctk.CTkFrame):
         self.grid_columnconfigure(1, weight=1)
         text = ctk.CTkLabel(
             self, text=label, anchor="w",
-            font=theme.font(ctk), text_color=theme.FG,
+            font=theme.font(ctk), text_color=P(theme.FG),
         )
         text.grid(row=0, column=0, sticky="w", padx=(0, theme.PAD))
         self.hint_label = None  # kept so a subclass can reword the hint later
@@ -103,7 +119,7 @@ class Row(ctk.CTkFrame):
             self.hint_label = ctk.CTkLabel(
                 self, text=hint, anchor="w", justify="left",
                 font=theme.font(ctk, theme.FONT_SIZE_SMALL),
-                text_color=theme.FG_FAINT, wraplength=380,
+                text_color=P(theme.FG_FAINT), wraplength=380,
             )
             self.hint_label.grid(row=1, column=0, columnspan=2, sticky="w",
                                  pady=(2, 0))
@@ -117,10 +133,11 @@ class SettingsWindow(ctk.CTk):
     TITLE = "WinThings"
     WIDTH = 480
     HEIGHT = 640
+    APPEARANCE_KEY = None  # config key holding "system" / "light" / "dark"
 
     def __init__(self, config, on_change=None):
-        theme.apply(ctk)
-        super().__init__(fg_color=theme.BG)
+        theme.apply(ctk, config[self.APPEARANCE_KEY] if self.APPEARANCE_KEY else "dark")
+        super().__init__(fg_color=P(theme.BG))
         self.config_obj = config
         self._on_change = on_change
         self._loading = True
@@ -135,12 +152,12 @@ class SettingsWindow(ctk.CTk):
         ctk.CTkLabel(
             header, text=self.TITLE, anchor="w",
             font=theme.font(ctk, theme.FONT_SIZE_TITLE, "bold"),
-            text_color=theme.FG,
+            text_color=P(theme.FG),
         ).pack(fill="x")
         self.status = ctk.CTkLabel(
             header, text="●  Starting…", anchor="w",
             font=theme.font(ctk, theme.FONT_SIZE_SMALL),
-            text_color=theme.FG_DIM,
+            text_color=P(theme.FG_DIM),
         )
         self.status.pack(fill="x", pady=(2, 0))
 
@@ -153,7 +170,7 @@ class SettingsWindow(ctk.CTk):
         self.toast = ctk.CTkLabel(
             self, text="", anchor="w",
             font=theme.font(ctk, theme.FONT_SIZE_SMALL),
-            text_color=theme.FG_DIM,
+            text_color=P(theme.FG_DIM),
         )
         self.toast.pack(fill="x", padx=theme.PAD * 2, pady=(0, theme.PAD))
 
@@ -186,14 +203,14 @@ class SettingsWindow(ctk.CTk):
         row = self._row(label, hint)
         value = ctk.CTkLabel(
             row, text="", width=56, anchor="e",
-            font=theme.font(ctk, theme.FONT_SIZE_SMALL), text_color=theme.FG_DIM,
+            font=theme.font(ctk, theme.FONT_SIZE_SMALL), text_color=P(theme.FG_DIM),
         )
         value.grid(row=0, column=2, padx=(theme.PAD_SMALL, 0))
         steps = int((hi - lo) / step) if step else None
         slider = ctk.CTkSlider(
             row, from_=lo, to=hi, number_of_steps=steps,
-            button_color=theme.ACCENT, button_hover_color=theme.ACCENT_HOVER,
-            progress_color=theme.ACCENT,
+            button_color=P(theme.ACCENT), button_hover_color=P(theme.ACCENT_HOVER),
+            progress_color=P(theme.ACCENT),
         )
         slider.set(self.config_obj.num(key, lo, hi))
         value.configure(text=fmt.format(slider.get()))
@@ -217,10 +234,53 @@ class SettingsWindow(ctk.CTk):
 
         switch = ctk.CTkSwitch(
             row, text="", variable=var, command=changed,
-            progress_color=theme.ACCENT, width=44,
+            progress_color=P(theme.ACCENT), width=44,
         )
         switch.grid(row=0, column=1, sticky="e")
         return switch
+
+    def add_checkbox(self, text, key, on_toggle=None):
+        """A full-width checkbox whose own text says what it does.
+        on_toggle(value) may return False to refuse; the box then flips back.
+        The returned box carries its BooleanVar as `.var` for re-syncing."""
+        var = tk.BooleanVar(value=bool(self.config_obj[key]))
+
+        def changed():
+            value = bool(var.get())
+            if on_toggle and on_toggle(value) is False:
+                var.set(not value)
+                return
+            self._commit(key, value)
+
+        box = ctk.CTkCheckBox(
+            self.body, text=text, variable=var, command=changed,
+            font=theme.font(ctk), text_color=P(theme.FG),
+            fg_color=P(theme.ACCENT), hover_color=P(theme.ACCENT_HOVER),
+            border_color=P(theme.FG_FAINT), checkmark_color="#ffffff",
+            checkbox_width=20, checkbox_height=20, corner_radius=4, border_width=2,
+        )
+        box.pack(fill="x", padx=theme.PAD_SMALL, pady=theme.PAD_SMALL)
+        box.var = var
+        return box
+
+    def add_radios(self, label, options, value, on_change):
+        """Label on the left, one radio button per (value, text) option, for a
+        choice between two or three things. on_change(value) on every pick.
+        Returns the StringVar, so a caller can set or revert the choice."""
+        row = self._row(label)
+        var = tk.StringVar(value=value)
+        group = ctk.CTkFrame(row, fg_color="transparent")
+        group.grid(row=0, column=1, sticky="w")
+        for option, text in options:
+            ctk.CTkRadioButton(
+                group, text=text, value=option, variable=var, width=0,
+                command=lambda: on_change(var.get()),
+                font=theme.font(ctk), text_color=P(theme.FG),
+                fg_color=P(theme.ACCENT), hover_color=P(theme.ACCENT_HOVER),
+                border_color=P(theme.FG_FAINT), radiobutton_width=18,
+                radiobutton_height=18, border_width_unchecked=2, border_width_checked=5,
+            ).pack(side="left", padx=(0, theme.PAD + 4))
+        return var
 
     def add_dropdown(self, label, key, values, hint=None):
         row = self._row(label, hint)
@@ -230,8 +290,8 @@ class SettingsWindow(ctk.CTk):
         menu = ctk.CTkOptionMenu(
             row, values=list(values) or ["(none)"],
             command=lambda v: self._commit(key, v),
-            fg_color=theme.BG_ELEVATED, button_color=theme.BG_HOVER,
-            button_hover_color=theme.BG_ACTIVE, text_color=theme.FG,
+            fg_color=P(theme.BG_ELEVATED), button_color=P(theme.BG_HOVER),
+            button_hover_color=P(theme.BG_ACTIVE), text_color=P(theme.FG),
         )
         if current:
             menu.set(current)
@@ -241,8 +301,8 @@ class SettingsWindow(ctk.CTk):
     def add_entry(self, label, key, hint=None, cast=str):
         row = self._row(label, hint)
         entry = ctk.CTkEntry(
-            row, fg_color=theme.BG_ELEVATED, border_color=theme.BORDER,
-            text_color=theme.FG,
+            row, fg_color=P(theme.BG_ELEVATED), border_color=P(theme.BORDER),
+            text_color=P(theme.FG),
         )
         entry.insert(0, str(self.config_obj[key]))
         entry.grid(row=0, column=1, sticky="ew")
@@ -264,11 +324,8 @@ class SettingsWindow(ctk.CTk):
         """Click-to-record hotkey field — no typing accelerator syntax.
         validate(spec) may return a message to refuse a combination."""
         row = self._row(label, hint)
-        button = ctk.CTkButton(
-            row, text=pretty(self.config_obj[key]),
-            fg_color=theme.BG_ELEVATED, hover_color=theme.BG_HOVER,
-            text_color=theme.FG, border_color=theme.BORDER, border_width=1,
-        )
+        button = ctk.CTkButton(row, text=pretty(self.config_obj[key]),
+                               **_button_colors(None))
         button.grid(row=0, column=1, sticky="ew")
         state = {"cancel": None}
 
@@ -306,18 +363,31 @@ class SettingsWindow(ctk.CTk):
         return button
 
     def add_button(self, label, action, primary=False, danger=False):
-        colors = {
-            "fg_color": theme.ACCENT if primary else theme.BG_ELEVATED,
-            "hover_color": theme.ACCENT_HOVER if primary else theme.BG_HOVER,
-        }
-        if danger:
-            colors = {"fg_color": theme.ERROR, "hover_color": "#c93b3f"}
-        button = ctk.CTkButton(
-            self.footer, text=label, command=action, height=36,
-            text_color="#ffffff" if (primary or danger) else theme.FG, **colors,
-        )
+        """A button in the footer, below the scrolling rows."""
+        style = "danger" if danger else ("primary" if primary else None)
+        button = ctk.CTkButton(self.footer, text=label, command=action, height=36,
+                               **_button_colors(style))
         button.pack(side="left", expand=True, fill="x", padx=3)
         return button
+
+    def add_buttons(self, *buttons, height=36):
+        """A row of equally wide buttons among the rows: (label, action, style)
+        with style "primary", "danger" or None."""
+        frame = ctk.CTkFrame(self.body, fg_color="transparent")
+        frame.pack(fill="x", padx=theme.PAD_SMALL, pady=theme.PAD_SMALL)
+        made = []
+        for i, (label, action, style) in enumerate(buttons):
+            button = ctk.CTkButton(frame, text=label, command=action, height=height,
+                                   font=theme.font(ctk), **_button_colors(style))
+            button.pack(side="left", expand=True, fill="x",
+                        padx=(0 if i == 0 else theme.PAD_SMALL, 0))
+            made.append(button)
+        return made
+
+    def add_separator(self):
+        # corner_radius=0: a rounded 1 px frame draws nothing at all.
+        ctk.CTkFrame(self.body, height=1, corner_radius=0, fg_color=P(theme.BORDER)).pack(
+            fill="x", padx=theme.PAD_SMALL, pady=theme.PAD)
 
     def add_section(self, label):
         frame = ctk.CTkFrame(self.body, fg_color="transparent")
@@ -325,19 +395,19 @@ class SettingsWindow(ctk.CTk):
         ctk.CTkLabel(
             frame, text=label.upper(), anchor="w",
             font=theme.font(ctk, theme.FONT_SIZE_SMALL, "bold"),
-            text_color=theme.FG_FAINT,
+            text_color=P(theme.FG_FAINT),
         ).pack(fill="x")
         return frame
 
     # -- status / feedback ------------------------------------------------
     def set_status(self, text, color=theme.OK):
-        self.status.configure(text=f"●  {text}", text_color=color)
+        self.status.configure(text=f"●  {text}", text_color=P(color))
 
     def flash(self, text, error=False):
         self.toast.configure(
-            text=text, text_color=theme.ERROR if error else theme.OK
+            text=text, text_color=P(theme.ERROR if error else theme.OK)
         )
-        self.after(3000, lambda: self.toast.configure(text=""))
+        self.after(4000, lambda: self.toast.configure(text=""))
 
     def _commit(self, key, value):
         if self._loading:

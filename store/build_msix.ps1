@@ -50,7 +50,10 @@ $DistDir   = Join-Path $RepoDir "dist\reader"
 if (-not $Version) {
     $Version = ([xml](Get-Content (Join-Path $StoreDir "AppxManifest.xml") -Raw)).Package.Identity.Version
 }
-$OutMsix   = Join-Path $RepoDir "dist\ReadSelected_$Version.msix"
+# Test-signed builds get their own name so they can't be mistaken for the
+# unsigned file that goes to Partner Center.
+$Suffix    = if ($SignForTesting) { "_test" } else { "" }
+$OutMsix   = Join-Path $RepoDir "dist\ReadSelected_$Version$Suffix.msix"
 
 # Find makeappx.exe from the installed Windows SDK
 function Find-WinSdkTool([string]$Name) {

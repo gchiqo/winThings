@@ -3,8 +3,9 @@
 In development (bare Python): writes HKCU\\Run pointing at pythonw.exe + script.
 When frozen as a one-folder bundle (PyInstaller, not in MSIX): writes HKCU\\Run
 pointing at the exe itself.
-When packaged as MSIX: uses the Windows.ApplicationModel.StartupTask API via
-the optional `winrt` package, falling back to the registry if unavailable.
+When packaged as MSIX: only the package's StartupTask
+(Windows.ApplicationModel.StartupTask via the `winrt` package); Windows ignores
+Run values written from inside a package.
 """
 
 import os
@@ -64,27 +65,33 @@ def _msix_is_enabled():
 
 
 def _msix_set_enabled(on):
-    """Enable/disable StartupTask via winrt. Returns True on success."""
+    """Enable/disable the StartupTask via winrt. True only if it ended up in
+    the asked state: Windows won't let an app re-enable a task the user turned
+    off in Settings > Apps > Startup (DISABLED_BY_USER), or one policy blocks."""
     try:
         import asyncio
-        from winrt.windows.applicationmodel import StartupTask
+        from winrt.windows.applicationmodel import StartupTask, StartupTaskState
         loop = asyncio.new_event_loop()
-        task = loop.run_until_complete(StartupTask.get_async(STARTUP_TASK_ID))
-        if on:
-            loop.run_until_complete(task.request_enable_async())
-        else:
+        try:
+            task = loop.run_until_complete(StartupTask.get_async(STARTUP_TASK_ID))
+            if on:
+                state = loop.run_until_complete(task.request_enable_async())
+                return state in (StartupTaskState.ENABLED,
+                                 StartupTaskState.ENABLED_BY_POLICY)
             task.disable()
-        loop.close()
-        return True
+            return True
+        finally:
+            loop.close()
     except Exception:
         return False
 
 
 def is_enabled(name):
     if in_msix_package():
-        result = _msix_is_enabled()
-        if result is not None:
-            return result
+        # Only the package's StartupTask counts. A Run value seen from in here
+        # may be the pre-Store script's (registry reads fall through to the real
+        # hive), which made the app show "on" while Windows had it off.
+        return bool(_msix_is_enabled())
     import winreg
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
@@ -96,8 +103,9 @@ def is_enabled(name):
 
 def enable(name, script):
     if in_msix_package():
-        if _msix_set_enabled(True):
-            return True
+        # The StartupTask is the only autostart Windows honours for a package;
+        # a Run value written from inside it is virtualized and never fires.
+        return _msix_set_enabled(True)
     if getattr(sys, 'frozen', False):
         cmd = f'"{sys.executable}"'
     else:
@@ -113,7 +121,7 @@ def enable(name, script):
 
 def disable(name):
     if in_msix_package():
-        _msix_set_enabled(False)
+        return _msix_set_enabled(False)
     import winreg
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0,
