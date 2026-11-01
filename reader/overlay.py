@@ -283,7 +283,8 @@ class Overlay(tk.Toplevel):
             return
         if paused:
             self.paused_label.configure(text=f"Paused · {hint}" if hint else "Paused")
-            self.paused_label.place(x=14, y=12, anchor="nw")
+            # Bottom-left: at the top it covered the first line in the compact panel.
+            self.paused_label.place(x=14, rely=1.0, y=-12, anchor="sw")
         else:
             self.paused_label.place_forget()
 

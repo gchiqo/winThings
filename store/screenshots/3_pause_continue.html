@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pause, continue</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .key { font-size: 31px; min-width: 80px; padding: 15px 20px; border-radius: 17px; }
+  .plus { font-size: 30px; }
+  .rowlabel { font-size: 21px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); margin: 36px 0 14px; }
+</style>
+</head>
+<body>
+<div class="blob" style="width:900px;height:900px;left:-300px;top:-300px;--c:var(--pink);opacity:.38"></div>
+<div class="blob" style="width:820px;height:820px;right:-220px;bottom:-320px;--c:var(--indigo)"></div>
+<div class="blob" style="width:420px;height:420px;right:700px;top:-140px;--c:var(--cyan);opacity:.35"></div>
+<div class="dots"></div>
+
+<main>
+  <section class="copy">
+    <h1>pause.<br>sip. ☕<br><span class="grad">continue.</span></h1>
+    <p class="lede">Stop mid-sentence and pick up from the very same word.</p>
+    <div class="rowlabel">pause / continue</div>
+    <div class="keys"><span class="key">Ctrl</span><span class="plus">+</span><span class="key">Shift</span><span class="plus">+</span><span class="key">Alt</span><span class="plus">+</span><span class="key">A</span></div>
+    <div class="rowlabel">read / stop</div>
+    <div class="keys"><span class="key">Ctrl</span><span class="plus">+</span><span class="key">Shift</span><span class="plus">+</span><span class="key">A</span></div>
+  </section>
+
+  <section class="stage">
+    <div class="shot" style="left:10px;top:300px;width:920px">
+      <img src="assets/panel_paused.png" alt="Read Selected's reading panel, paused">
+    </div>
+    <div class="sticker big yellow" style="left:-40px;top:232px;transform:rotate(-8deg)">⏸️</div>
+    <div class="sticker" style="left:470px;top:222px;transform:rotate(4deg)">same word, no rewinding 🎯</div>
+    <div class="sticker cyan" style="left:120px;top:760px;transform:rotate(-3deg)">change both keys in Settings ⚙️</div>
+  </section>
+</main>
+</body>
+</html>

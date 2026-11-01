@@ -23,3 +23,6 @@ store/TestCert.pfx
 # Local state lives in %APPDATA%\WinThings, but don't catch strays
 *.db
 *.log
+
+# Rendered Store screenshots (store/screenshots/render.ps1)
+store/screenshots/png/

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Select, press, listen</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .speaker { right: -10px; top: 40px; width: 460px; padding: 24px 28px; display: flex; align-items: center; gap: 22px; }
+  .speaker svg { width: 96px; height: 96px; border-radius: 20px; flex: none; }
+  .speaker .t { font-family: var(--display); font-weight: 800; font-size: 30px; }
+  .eq { display: flex; align-items: flex-end; gap: 7px; height: 44px; margin-top: 10px; }
+  .eq i { width: 9px; border-radius: 5px; background: linear-gradient(var(--cyan), var(--indigo)); }
+</style>
+</head>
+<body>
+<div class="blob" style="width:900px;height:900px;left:-260px;top:-360px;--c:var(--indigo)"></div>
+<div class="blob" style="width:760px;height:760px;right:-200px;bottom:-320px;--c:var(--cyan)"></div>
+<div class="blob" style="width:420px;height:420px;left:760px;top:700px;--c:var(--pink);opacity:.32"></div>
+<div class="dots"></div>
+
+<main>
+  <section class="copy">
+    <div class="brand">
+      <svg viewBox="0 0 160 160"><rect width="160" height="160" fill="#0f172a"/><rect x="34" y="34" width="8" height="92" rx="4" fill="#38bdf8"/><rect x="20" y="34" width="36" height="8" rx="4" fill="#38bdf8"/><rect x="20" y="118" width="36" height="8" rx="4" fill="#38bdf8"/><polygon points="72,54 72,106 96,118 96,42" fill="#38bdf8"/><rect x="60" y="62" width="14" height="36" rx="3" fill="#38bdf8"/><path d="M104 66 A14 14 0 0 1 104 94" fill="none" stroke="#38bdf8" stroke-width="6" stroke-linecap="round"/><path d="M110 56 A24 24 0 0 1 110 104" fill="none" stroke="#818cf8" stroke-width="5" stroke-linecap="round"/><path d="M116 46 A36 36 0 0 1 116 114" fill="none" stroke="#4f46e5" stroke-width="5" stroke-linecap="round"/></svg>
+      Read Selected
+    </div>
+    <h1>select it.<br>press it.<br><span class="grad">hear it.</span></h1>
+    <p class="lede">Any text in any app, read out loud in a natural voice. Runs 100% on your PC.</p>
+    <div class="chips">
+      <span class="chip">🔒 fully offline</span>
+      <span class="chip">🙅 no account</span>
+      <span class="chip">🚫 no ads</span>
+    </div>
+  </section>
+
+  <section class="stage">
+    <div class="window" style="left:20px;top:150px;width:900px;height:470px">
+      <div class="titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="name">Why listening helps you remember</span></div>
+      <div class="urlbar">🔒 learn.example.com/listen-and-read</div>
+      <div class="page">
+        <h2>Why listening helps you remember</h2>
+        <p>Reading on a screen all day is tiring. <span class="sel">Listening while your eyes follow along makes the words <span class="mark">stick</span>, and gives your eyes a break between long emails, documents and articles.</span></p>
+        <p>Try it on anything you are reading right now.</p>
+      </div>
+    </div>
+
+    <div class="card speaker">
+      <svg viewBox="0 0 160 160"><rect width="160" height="160" fill="#0f172a"/><rect x="34" y="34" width="8" height="92" rx="4" fill="#38bdf8"/><rect x="20" y="34" width="36" height="8" rx="4" fill="#38bdf8"/><rect x="20" y="118" width="36" height="8" rx="4" fill="#38bdf8"/><polygon points="72,54 72,106 96,118 96,42" fill="#38bdf8"/><rect x="60" y="62" width="14" height="36" rx="3" fill="#38bdf8"/><path d="M104 66 A14 14 0 0 1 104 94" fill="none" stroke="#38bdf8" stroke-width="6" stroke-linecap="round"/><path d="M110 56 A24 24 0 0 1 110 104" fill="none" stroke="#818cf8" stroke-width="5" stroke-linecap="round"/><path d="M116 46 A36 36 0 0 1 116 114" fill="none" stroke="#4f46e5" stroke-width="5" stroke-linecap="round"/></svg>
+      <div>
+        <div class="t">reading out loud…</div>
+        <div class="eq"><i style="height:30%"></i><i style="height:70%"></i><i style="height:100%"></i><i style="height:55%"></i><i style="height:85%"></i><i style="height:40%"></i><i style="height:95%"></i><i style="height:60%"></i><i style="height:35%"></i><i style="height:75%"></i></div>
+      </div>
+    </div>
+
+    <div class="keys" style="position:absolute;left:60px;top:800px">
+      <span class="key">Ctrl</span><span class="plus">+</span><span class="key">Shift</span><span class="plus">+</span><span class="key">A</span>
+    </div>
+
+    <div class="sticker pink" style="left:-60px;top:585px;transform:rotate(-6deg)">1 · select ✍️</div>
+    <div class="sticker yellow" style="left:600px;top:812px;transform:rotate(4deg)">2 · press ⌨️</div>
+    <div class="sticker cyan" style="right:40px;top:212px;transform:rotate(-3deg)">3 · listen 🎧</div>
+  </section>
+</main>
+</body>
+</html>

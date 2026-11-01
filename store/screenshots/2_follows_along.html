@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>It follows along</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .note { font-size: 23px; color: var(--dim); margin-top: 26px; max-width: 620px; }
+</style>
+</head>
+<body>
+<div class="blob" style="width:820px;height:820px;left:-240px;bottom:-380px;--c:var(--cyan)"></div>
+<div class="blob" style="width:820px;height:820px;right:-240px;top:-340px;--c:var(--indigo)"></div>
+<div class="blob" style="width:380px;height:380px;right:520px;bottom:-120px;--c:var(--pink);opacity:.3"></div>
+<div class="dots"></div>
+
+<main>
+  <section class="copy">
+    <h1>it follows<br><span class="grad">along.</span> ✨</h1>
+    <p class="lede">The word being read lights up right where you selected it. Scroll away and it keeps up.</p>
+    <div class="chips">
+      <span class="label">works where you read</span>
+      <span class="chip">Edge</span><span class="chip">Chrome</span><span class="chip">Firefox</span>
+      <span class="chip">Word</span><span class="chip">PDFs</span><span class="chip">Notepad</span><span class="chip">Terminal</span>
+    </div>
+    <p class="note">Apps that hide their text get a small reading panel instead.</p>
+  </section>
+
+  <section class="stage">
+    <div class="window" style="left:0;top:170px;width:940px;height:540px">
+      <div class="titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="name">Study notes</span></div>
+      <div class="page" style="padding-top:46px">
+        <h2>The water cycle</h2>
+        <p>Water never sits still. <span class="sel">Sunlight makes the sea <span class="mark">evaporate</span>, and the vapour rises, cools and condenses into clouds,</span> until the droplets get heavy enough to fall back as rain or snow.</p>
+        <p>The whole loop can take days, or thousands of years.</p>
+      </div>
+    </div>
+
+    <!-- From the sticker down to the highlighted word ("evaporate"). -->
+    <svg style="position:absolute;left:600px;top:120px;width:300px;height:260px;z-index:5;overflow:visible" viewBox="0 0 300 260">
+      <path d="M110 12 C 60 80, 80 170, 140 212" fill="none" stroke="#0b1020" stroke-width="13" stroke-linecap="round" stroke-dasharray="2 16"/>
+      <path d="M110 12 C 60 80, 80 170, 140 212" fill="none" stroke="#f8fafc" stroke-width="7" stroke-linecap="round" stroke-dasharray="2 16"/>
+      <path d="M140 212 l-14 -31 M140 212 l-34 -3" fill="none" stroke="#0b1020" stroke-width="13" stroke-linecap="round"/>
+      <path d="M140 212 l-14 -31 M140 212 l-34 -3" fill="none" stroke="#f8fafc" stroke-width="7" stroke-linecap="round"/>
+    </svg>
+    <div class="sticker" style="left:600px;top:60px;transform:rotate(5deg)">you are here 👀</div>
+    <div class="sticker pink" style="left:40px;top:860px;transform:rotate(-3deg)">your selection stays put 💙</div>
+  </section>
+</main>
+</body>
+</html>

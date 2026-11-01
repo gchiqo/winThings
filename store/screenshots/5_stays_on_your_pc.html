@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stays on your PC</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .voices { left: 30px; top: 190px; width: 860px; padding: 26px 30px; }
+  .voice { display: flex; align-items: center; gap: 24px; padding: 20px 10px; border-bottom: 2px solid rgba(255, 255, 255, .08); }
+  .voice:last-of-type { border-bottom: 0; }
+  .play { width: 64px; height: 64px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: 26px; color: var(--bg); background: linear-gradient(135deg, var(--cyan), var(--indigo)); }
+  .who { flex: 1; }
+  .who b { display: block; font-family: var(--display); font-weight: 800; font-size: 34px; }
+  .who span { font-size: 24px; color: var(--dim); }
+  .eq { display: flex; align-items: center; gap: 6px; height: 50px; }
+  .eq i { width: 8px; border-radius: 4px; background: linear-gradient(var(--cyan), var(--indigo)); }
+  .more { margin-top: 14px; padding: 18px 10px 4px; font-size: 26px; color: var(--dim); }
+  .more b { color: var(--white); }
+</style>
+</head>
+<body>
+<div class="blob" style="width:900px;height:900px;left:-280px;bottom:-380px;--c:var(--indigo)"></div>
+<div class="blob" style="width:780px;height:780px;right:-220px;top:-300px;--c:var(--cyan);opacity:.42"></div>
+<div class="blob" style="width:420px;height:420px;right:300px;bottom:-160px;--c:var(--pink);opacity:.3"></div>
+<div class="dots"></div>
+
+<main>
+  <section class="copy">
+    <h1>stays on<br><span class="grad">your PC.</span> 🔒</h1>
+    <p class="lede">No cloud, no account, no tracking. The text you select never leaves your computer.</p>
+    <div class="chips">
+      <span class="chip">☁️ no cloud</span>
+      <span class="chip">👤 no account</span>
+      <span class="chip">📡 no tracking</span>
+      <span class="chip">✈️ works offline</span>
+    </div>
+  </section>
+
+  <section class="stage">
+    <div class="card voices">
+      <div class="voice"><span class="play">▶</span><div class="who"><b>Ryan</b><span>English (US) · high quality</span></div><div class="eq"><i style="height:40%"></i><i style="height:80%"></i><i style="height:55%"></i><i style="height:100%"></i><i style="height:65%"></i><i style="height:30%"></i></div></div>
+      <div class="voice"><span class="play">▶</span><div class="who"><b>Amy</b><span>English (US)</span></div><div class="eq"><i style="height:60%"></i><i style="height:35%"></i><i style="height:90%"></i><i style="height:50%"></i><i style="height:75%"></i><i style="height:45%"></i></div></div>
+      <div class="voice"><span class="play">▶</span><div class="who"><b>LibriTTS-R</b><span>English (US)</span></div><div class="eq"><i style="height:30%"></i><i style="height:70%"></i><i style="height:45%"></i><i style="height:85%"></i><i style="height:55%"></i><i style="height:95%"></i></div></div>
+      <div class="voice"><span class="play">▶</span><div class="who"><b>Natia</b><span>Georgian · ქართული</span></div><div class="eq"><i style="height:75%"></i><i style="height:40%"></i><i style="height:100%"></i><i style="height:60%"></i><i style="height:35%"></i><i style="height:80%"></i></div></div>
+      <div class="more">＋ <b>dozens more free voices</b> in 30+ languages, a click away</div>
+    </div>
+    <div class="sticker pink" style="left:610px;top:110px;transform:rotate(6deg)">ქართულიც 👀</div>
+    <div class="sticker yellow" style="left:60px;top:880px;transform:rotate(-3deg)">built-in voices, ready to go 🎙️</div>
+  </section>
+</main>
+</body>
+</html>

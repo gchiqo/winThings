@@ -1,0 +1,88 @@
+/* Shared look for the Store screenshots: 1920x1080 scenes, rendered at 2x by
+   render.ps1. Navy / cyan / indigo from the app icon, plus pink and lime for
+   the stickers. */
+@import url("https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&family=Noto+Sans+Georgian:wght@400;700;900&display=swap");
+
+:root {
+  --bg: #0b1020;
+  --white: #f8fafc;
+  --dim: #a8b5cc;
+  --cyan: #38bdf8;
+  --indigo: #818cf8;
+  --pink: #f472b6;
+  --lime: #d9f99d;
+  --yellow: #ffd54f;
+  --sel: #b6d4fb;
+  /* Noto Sans Georgian fills in the Georgian letters Roboto doesn't have. */
+  --display: "Roboto", "Noto Sans Georgian", "Segoe UI", sans-serif;
+  --text: "Roboto", "Noto Sans Georgian", "Segoe UI", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; }
+body { background: var(--bg); color: var(--white); font-family: var(--text); position: relative; }
+
+/* Soft colour glows. A radial gradient, not filter: blur(), which headless Edge
+   tiles badly at the edges (hard dark rectangles). Colour comes from --c. */
+.blob { position: absolute; border-radius: 50%; opacity: .6; background: radial-gradient(closest-side, var(--c), transparent); }
+.dots {
+  position: absolute; inset: 0; opacity: .55;
+  background-image: radial-gradient(rgba(255, 255, 255, .07) 1.5px, transparent 1.5px);
+  background-size: 26px 26px;
+}
+
+main { position: relative; z-index: 1; height: 100%; display: flex; align-items: center; gap: 60px; padding: 0 100px 0 110px; }
+.copy { flex: 0 0 700px; }
+.stage { position: relative; flex: 1; height: 100%; }
+
+.brand { display: inline-flex; align-items: center; gap: 14px; font-weight: 600; font-size: 26px; color: var(--dim); margin-bottom: 36px; }
+.brand svg { width: 48px; height: 48px; border-radius: 11px; }
+
+h1 { font-family: var(--display); font-weight: 900; font-size: 116px; line-height: 1; letter-spacing: -2px; margin: 0; }
+.grad { background: linear-gradient(90deg, var(--cyan), var(--indigo) 55%, var(--pink)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.lede { font-size: 33px; line-height: 1.38; color: var(--dim); margin: 34px 0 0; max-width: 640px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 40px; max-width: 660px; }
+.chip { padding: 11px 24px; border-radius: 999px; background: rgba(255, 255, 255, .08); border: 2px solid rgba(255, 255, 255, .16); font-size: 25px; font-weight: 600; }
+.chips .label { width: 100%; font-size: 22px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+
+.sticker {
+  position: absolute; z-index: 6; white-space: nowrap;
+  padding: 13px 28px; border-radius: 999px;
+  font-family: var(--display); font-weight: 900; font-size: 31px; color: var(--bg);
+  background: var(--lime); border: 4px solid var(--bg); box-shadow: 7px 7px 0 var(--bg);
+}
+.sticker.pink { background: #fbcfe8; }
+.sticker.cyan { background: #bae6fd; }
+.sticker.yellow { background: #fde68a; }
+.sticker.big { font-size: 64px; padding: 6px 22px; border-radius: 28px; }
+
+.keys { display: flex; align-items: center; gap: 14px; }
+.key {
+  min-width: 96px; padding: 18px 26px; border-radius: 20px; text-align: center;
+  font-family: var(--text); font-weight: 700; font-size: 38px; color: var(--bg);
+  background: linear-gradient(#ffffff, #dfe6ef);
+  box-shadow: 0 9px 0 #8fa0b8, 0 22px 34px rgba(0, 0, 0, .45);
+}
+.plus { font-size: 38px; font-weight: 800; color: var(--dim); }
+.keyrow { display: flex; align-items: center; gap: 26px; margin-top: 30px; }
+.keyrow .what { font-family: var(--display); font-weight: 800; font-size: 34px; }
+
+/* An app window: light, like most of what people read in. */
+.window { position: absolute; background: #fff; color: #1f2937; border-radius: 22px; overflow: hidden; box-shadow: 0 40px 100px rgba(0, 0, 0, .55); }
+.titlebar { height: 52px; background: #eef2f7; display: flex; align-items: center; gap: 10px; padding: 0 20px; font-size: 18px; color: #475569; }
+.titlebar .dot { width: 13px; height: 13px; border-radius: 50%; background: #cbd5e1; }
+.titlebar .name { margin-left: 14px; }
+.urlbar { height: 48px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; padding: 0 24px; font-size: 18px; color: #64748b; }
+.page { padding: 42px 56px; font-family: Georgia, "Times New Roman", serif; }
+.page h2 { font-family: var(--text); font-size: 40px; font-weight: 700; margin: 0 0 22px; color: #0f172a; }
+.page p { font-size: 28px; line-height: 1.62; margin: 0 0 18px; color: #334155; }
+
+/* The selection as the app draws it, and Read Selected's marker on top. */
+.sel { background: var(--sel); }
+.mark { position: relative; }
+.mark::after { content: ""; position: absolute; inset: -2px -3px; background: rgba(255, 213, 79, .45); border-radius: 3px; }
+
+.card { position: absolute; border-radius: 26px; background: rgba(18, 26, 51, .92); border: 2px solid rgba(255, 255, 255, .12); box-shadow: 0 30px 80px rgba(0, 0, 0, .5); }
+.shot { position: absolute; border-radius: 18px; overflow: hidden; box-shadow: 0 40px 100px rgba(0, 0, 0, .6); border: 2px solid rgba(255, 255, 255, .14); }
+.shot img { display: block; width: 100%; }
